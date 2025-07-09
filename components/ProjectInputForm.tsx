@@ -147,11 +147,11 @@ const ProjectInputForm: React.FC<ProjectInputFormProps> = ({
           </div>
           <p className="text-sm text-slate-500 text-center">目的と日付を入力して計画を作成するか、テンプレートまたは既存の計画から開始します。</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {supabase && (
             <button
               type="submit"
               disabled={isLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out transform hover:scale-105 flex items-center justify-center text-md"
-            {supabase && (
             >
               {isLoading ? (
                 <LoadingSpinner size="sm" color="border-white" />
