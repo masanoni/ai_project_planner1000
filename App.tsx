@@ -215,13 +215,13 @@ const App: React.FC = () => {
     return unsubscribe;
   }, [currentProject?.id]);
 
-  const loadProjectMembers = useCallback(async () => {
+const loadProjectMembers = useCallback(async () => {
   if (!currentProject?.id) return;
 
   try {
     const { data, error } = await supabase
       .from('project_members')
-      .select('*, user(email)')
+      .select('*, user(email), invited_by(email)')  // invited_byも一緒に取得したい場合
       .eq('project_id', currentProject.id);
 
     if (error) {
@@ -233,6 +233,7 @@ const App: React.FC = () => {
     console.error('メンバー取得時の例外:', error);
   }
 }, [currentProject?.id]);
+
 
 
   // Load project members when project changes
