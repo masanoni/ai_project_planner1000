@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 import React, { useRef, useEffect, useState, createRef, useCallback } from 'react';
 import { ProjectTask, EditableExtendedTaskDetails, ProjectHealthReport, SlideDeck, TaskStatus, GanttItem, ProjectMember } from '../types';
 import TaskCard from './TaskCard';
@@ -406,6 +407,7 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
             新規プロジェクト
           </button>
           <div className="flex flex-wrap gap-2">
+            {supabase && (
             <button
               onClick={onOpenProjectList}
               className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400"
@@ -413,6 +415,8 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
             >
               <FolderIcon className="w-5 h-5" />
             </button>
+            )}
+            {supabase && (
             <button
               onClick={handleSaveProject}
               disabled={isSaving}
@@ -421,6 +425,7 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
             >
               {isSaving ? <LoadingSpinner size="sm" color="border-white" /> : <DownloadIcon className="w-5 h-5" />}
             </button>
+            )}
             <button
               onClick={onUndo} disabled={!canUndo}
               className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 disabled:bg-slate-300 disabled:cursor-not-allowed" title="元に戻す"
@@ -480,7 +485,7 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
-                 {canManageMembers && currentProjectId && (
+                 {supabase && canManageMembers && currentProjectId && (
                    <button
                       onClick={() => setIsInviteModalOpen(true)}
                       className="inline-flex items-center justify-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md shadow-sm text-slate-700 bg-white hover:bg-slate-50"
