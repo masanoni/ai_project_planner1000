@@ -1,4 +1,3 @@
-
 export interface Attachment {
   id: string;
   name: string;
@@ -12,38 +11,34 @@ export enum SubStepStatus {
   COMPLETED = 'Completed',
 }
 
-// This interface defines the structure for an action item's implementation report.
 export interface ActionItemReport {
   notes: string;
   attachments: Attachment[];
-  matrixData: { headers: string[]; rows:string[][] } | null;
+  matrixData: { headers: string[]; rows: string[][] } | null;
 }
 
 export interface ActionItem {
-  id:string;
+  id: string;
   text: string;
   completed: boolean;
-  dueDate?: string; // Due date for the specific action item
-  completedDate?: string; // Date when the action item was marked as completed
-  responsible?: string; // Responsible person for the specific action item
-  report?: ActionItemReport; // Each action item can have its own detailed implementation report
+  dueDate?: string;
+  completedDate?: string;
+  responsible?: string;
+  report?: ActionItemReport;
 }
 
 export interface SubStep {
-  id:string;
+  id: string;
   text: string;
   notes?: string;
   nextSubStepIds?: string[];
   position?: { x: number; y: number };
-  
-  // New detailed fields for sub-steps
   responsible?: string;
   dueDate?: string;
   status?: SubStepStatus;
-  actionItems?: ActionItem[]; // Checklist for the sub-step
-  attachments?: Attachment[]; // For sub-step specific files
+  actionItems?: ActionItem[];
+  attachments?: Attachment[];
 }
-
 
 export enum NumericalTargetStatus {
   PENDING = 'pending',
@@ -53,11 +48,11 @@ export enum NumericalTargetStatus {
 
 export interface NumericalTarget {
   description: string;
-  targetValue: number | string; 
+  targetValue: number | string;
   unit: string;
   currentValue?: number | string;
   testNotes?: string;
-  status?: NumericalTargetStatus; 
+  status?: NumericalTargetStatus;
 }
 
 export enum TaskStatus {
@@ -74,10 +69,10 @@ export type SlideLayoutType = 'title_slide' | 'title_and_content' | 'section_hea
 export type ChartType = 'bar' | 'pie' | 'line';
 
 export interface SlideElementPosition {
-  x: number; // percentage
-  y: number; // percentage
-  width: number; // percentage
-  height: number; // percentage
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface BaseSlideElement {
@@ -96,22 +91,19 @@ export interface TextboxElement extends BaseSlideElement {
 
 export interface ImageElement extends BaseSlideElement {
   type: 'image';
-  // Points to an attachment within an action item's report
   subStepId: string;
-  actionItemId: string; 
+  actionItemId: string;
   attachmentId: string;
 }
 
 export interface TableElement extends BaseSlideElement {
   type: 'table';
-  // Points to matrixData within an action item's report
   subStepId: string;
   actionItemId: string;
 }
 
 export interface ChartElement extends BaseSlideElement {
   type: 'chart';
-  // Points to matrixData within an action item's report
   subStepId: string;
   actionItemId: string;
   chartType: ChartType;
@@ -131,7 +123,7 @@ export interface Slide {
   id: string;
   layout: SlideLayoutType;
   elements: SlideElement[];
-  notes?: string; // Speaker notes
+  notes?: string;
   isLocked?: boolean;
 }
 
@@ -140,15 +132,14 @@ export interface SlideDeck {
   theme?: 'light' | 'dark' | 'business';
 }
 
-
 // --- Main Project Interfaces ---
 
 export interface Decision {
   id: string;
-  question: string; // What needed to be decided
-  decision?: string; // The final outcome, undefined if not decided
-  reasoning?: string; // Justification for the decision, or importance if undecided
-  date?: string; // YYYY-MM-DD, undefined if not decided
+  question: string;
+  decision?: string;
+  reasoning?: string;
+  date?: string;
   status: 'decided' | 'undecided';
 }
 
@@ -156,12 +147,12 @@ export interface ExtendedTaskDetails {
   subSteps: SubStep[];
   resources: string;
   responsible: string;
-  notes: string; 
+  notes: string;
   numericalTarget?: NumericalTarget;
-  dueDate?: string; 
-  reportDeck?: SlideDeck; // Replaces ReportData
+  dueDate?: string;
+  reportDeck?: SlideDeck;
   resourceMatrix?: { headers: string[]; rows: string[][] } | null;
-  attachments?: Attachment[]; // For task-level files
+  attachments?: Attachment[];
   decisions?: Decision[];
   subStepCanvasSize?: { width: number; height: number };
 }
@@ -171,12 +162,12 @@ export interface ProjectTask {
   title: string;
   description: string;
   nextTaskIds?: string[];
-  position?: { x: number; y: number }; 
+  position?: { x: number; y: number };
   extendedDetails?: ExtendedTaskDetails;
-  status?: TaskStatus; 
+  status?: TaskStatus;
 }
 
-export interface TaskDetail { 
+export interface TaskDetail {
   keyActivities: string[];
   estimatedEffort: string;
   potentialChallenges: string[];
@@ -196,9 +187,9 @@ export interface ProjectFileContent {
   ganttData?: GanttItem[] | null;
 }
 
-export interface TaskExportData { 
-  task: ProjectTask; 
-  details: TaskDetail | null; 
+export interface TaskExportData {
+  task: ProjectTask;
+  details: TaskDetail | null;
 }
 
 export type EditableTaskFields = Pick<ProjectTask, 'title' | 'description'>;
@@ -216,8 +207,8 @@ export interface ProjectHealthReport {
   summary: string;
   positivePoints: string[];
   areasOfConcern: {
-      description: string;
-      relatedTaskIds: string[];
+    description: string;
+    relatedTaskIds: string[];
   }[];
   suggestions: string[];
 }
@@ -225,15 +216,16 @@ export interface ProjectHealthReport {
 export interface GanttItem {
   id: string;
   name: string;
-  start: string; // YYYY-MM-DD
-  end: string;   // YYYY-MM-DD
-  progress: number; // 0-100
+  start: string;
+  end: string;
+  progress: number;
   dependencies: string[];
   type: 'task' | 'substep' | 'actionitem';
-  parentId: string | null; // ID of the parent task or sub-step
+  parentId: string | null;
 }
 
-// プロジェクトコラボレーション関連の型定義
+// --- ✅ 修正済み ProjectMember 型定義（user.email の展開に対応）---
+
 export interface ProjectMember {
   id: string;
   projectId: string;
@@ -245,6 +237,12 @@ export interface ProjectMember {
   status: 'pending' | 'accepted' | 'declined';
   userEmail?: string;
   userName?: string;
+
+  // ← 追加部分
+  user?: {
+    email: string;
+    // name や他の必要な情報があればここに追加可能
+  };
 }
 
 export interface ProjectInvitation {
