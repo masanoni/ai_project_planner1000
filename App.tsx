@@ -723,4 +723,3 @@ if (error) {
 };
 
 export default App;
-どこを修正？
