@@ -58,52 +58,52 @@ export class ProjectService {
   }
 
   // プロジェクトの詳細情報とメンバー情報を取得
-  static async getProjectWithMembers(projectId: string): Promise<ProjectWithMetadata> {
-    if (!supabase) {
-      throw new Error(SUPABASE_NOT_AVAILABLE);
-    }
+static async getProjectWithMembers(projectId: string): Promise<ProjectWithMetadata> {
+  if (!supabase) throw new Error(SUPABASE_NOT_AVAILABLE);
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('ログインが必要です');
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('ログインが必要です');
-    }
+  // プロジェクト情報取得
+  const { data: projectData, error: projectError } = await supabase
+    .from('projects')
+    .select(`*, project_members!inner(role)`)
+    .eq('id', projectId)
+    .single();
 
-    // プロジェクト情報を取得
-    const { data: projectData, error: projectError } = await supabase
-      .from('projects')
-      .select(`
-        *,
-        project_members!inner(role)
-      `)
-      .eq('id', projectId)
-      .single();
+  if (projectError) throw new Error(`プロジェクト取得エラー: ${projectError.message}`);
 
-    if (projectError) {
-      throw new Error(`プロジェクトの取得に失敗しました: ${projectError.message}`);
-    }
+  // 修正: メンバー情報取得 (profiles経由)
+  const { data: membersData, error: membersError } = await supabase
+    .from('project_members')
+    .select(`*, profiles (email)`) // profilesテーブル経由
+    .eq('project_id', projectId)
+    .eq('status', 'accepted');
 
-// 修正後のメンバー情報取得部分
-const { data: membersData, error: membersError } = await supabase
-  .from('project_members')
-  .select(`
-    *,
-    profiles (email)  // profilesテーブル経由でemail取得
-  `)
-  .eq('project_id', projectId)
-  .eq('status', 'accepted');
+  if (membersError) {
+    console.error('メンバー取得エラー詳細:', membersError);
+    throw new Error(`メンバー情報取得失敗: ${membersError.message}`);
+  }
 
-// マッピング部分も修正
-const members: ProjectMember[] = membersData.map(member => ({
-  id: member.id,
-  projectId: member.project_id,
-  userId: member.user_id,
-  role: member.role,
-  invitedBy: member.invited_by,
-  invitedAt: member.invited_at,
-  joinedAt: member.joined_at,
-  status: member.status,
-  userEmail: member.profiles?.email,  // プロファイルからemail取得
-}));
+  // マッピング修正
+  const members: ProjectMember[] = membersData.map(member => ({
+    id: member.id,
+    projectId: member.project_id,
+    userId: member.user_id,
+    role: member.role,
+    invitedBy: member.invited_by,
+    invitedAt: member.invited_at,
+    joinedAt: member.joined_at,
+    status: member.status,
+    userEmail: member.profiles?.email || '', // プロファイルから取得
+  }));
+
+  return {
+    ...projectData, // プロジェクトデータ
+    members,
+    userRole: projectData.project_members[0]?.role || 'viewer',
+  };
+}
 
     return {
       id: projectData.id,
