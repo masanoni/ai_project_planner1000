@@ -416,10 +416,10 @@ const App: React.FC = () => {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = project-${Date.now()}.json;
-    document.body.appendChild(a);
-    a.click();
+a.href = url;
+a.download = `project-${Date.now()}.json`; // バッククォートで囲む
+document.body.appendChild(a);
+a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, [projectGoal, targetDate, tasks, ganttData]);
