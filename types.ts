@@ -237,7 +237,7 @@ export interface ProjectMember {
   status: 'pending' | 'accepted' | 'declined';
   userEmail?: string;
   userName?: string;
-
+　 profiles?: { email: string } | null;
   // ← 追加部分
   user?: {
     email: string;
