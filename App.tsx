@@ -215,16 +215,25 @@ const App: React.FC = () => {
     return unsubscribe;
   }, [currentProject?.id]);
 
-  const loadProjectMembers = useCallback(async () => {
-    if (!currentProject?.id) return;
-    
-    try {
-      const projectWithMembers = await ProjectService.getProjectWithMembers(currentProject.id);
-      setProjectMembers(projectWithMembers.members || []);
-    } catch (error) {
-      console.error('Failed to load project members:', error);
+ const loadProjectMembers = useCallback(async () => {
+  if (!currentProject?.id) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('project_members')
+      .select('*, user:user_profiles(email)')
+      .eq('project_id', currentProject.id);
+
+    if (error) {
+      throw error;
     }
-  }, [currentProject?.id]);
+
+    setProjectMembers(data || []);
+  } catch (error) {
+    console.error('Failed to load project members:', error);
+  }
+}, [currentProject?.id]);
+
 
   // Load project members when project changes
   useEffect(() => {
