@@ -219,10 +219,11 @@ const loadProjectMembers = useCallback(async () => {
   if (!currentProject?.id) return;
 
   try {
-   const { data, error } = await supabase
-  .from('project_members_with_email')
-  .select('*')
+  const { data, error } = await supabase
+  .from('project_members')
+  .select('*, user:user_id(email)')
   .eq('project_id', currentProject.id);
+
 
 if (error) {
   console.error('メンバー情報の取得に失敗しました:', error.message);
