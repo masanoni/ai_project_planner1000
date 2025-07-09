@@ -216,15 +216,24 @@ const App: React.FC = () => {
   }, [currentProject?.id]);
 
   const loadProjectMembers = useCallback(async () => {
-    if (!currentProject?.id) return;
-    
-    try {
-      const projectWithMembers = await ProjectService.getProjectWithMembers(currentProject.id);
-      setProjectMembers(projectWithMembers.members || []);
-    } catch (error) {
-      console.error('Failed to load project members:', error);
+  if (!currentProject?.id) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('project_members')
+      .select('*, user(email)')
+      .eq('project_id', currentProject.id);
+
+    if (error) {
+      console.error('メンバー情報の取得に失敗しました:', error.message);
+    } else {
+      setProjectMembers(data as ProjectMember[]);
     }
-  }, [currentProject?.id]);
+  } catch (error) {
+    console.error('メンバー取得時の例外:', error);
+  }
+}, [currentProject?.id]);
+
 
   // Load project members when project changes
   useEffect(() => {
