@@ -219,11 +219,10 @@ const loadProjectMembers = useCallback(async () => {
   if (!currentProject?.id) return;
 
   try {
-  const { data, error } = await supabase
-  .from('project_members')
-  .select('*, user:user_id(email)')
+   const { data, error } = await supabase
+  .from('project_members_with_email')
+  .select('*')
   .eq('project_id', currentProject.id);
-
 
 if (error) {
   console.error('メンバー情報の取得に失敗しました:', error.message);
@@ -245,7 +244,7 @@ if (error) {
   }, [loadProjectMembers]);
 
   const generateUniqueId = useCallback((prefix: string = 'item'): string => {
-    return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return ${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)};
   }, []);
 
   const setTasksWithHistory = useCallback((newTasks: ProjectTask[] | ((prev: ProjectTask[]) => ProjectTask[])) => {
@@ -430,7 +429,7 @@ if (error) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `project-${Date.now()}.json`;
+    a.download = project-${Date.now()}.json;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -724,3 +723,4 @@ if (error) {
 };
 
 export default App;
+どこを修正？
