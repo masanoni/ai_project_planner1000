@@ -219,11 +219,10 @@ const loadProjectMembers = useCallback(async () => {
   if (!currentProject?.id) return;
 
   try {
-   const { data, error } = await supabase
-  .from('project_members')
-  .select('*, user:user_profiles(email)')
-  .eq('project_id', currentProject.id);
-
+    const { data, error } = await supabase
+      .from('project_members')
+      .select('*, user(email)') // invited_byも一緒に取得したい場合
+      .eq('project_id', currentProject.id);
 
     if (error) {
       console.error('メンバー情報の取得に失敗しました:', error.message);
