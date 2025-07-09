@@ -221,7 +221,7 @@ const loadProjectMembers = useCallback(async () => {
   try {
    const { data, error } = await supabase
   .from('project_members')
-  .select('*, user:user_profiles(id, email)')
+  .select('*, user:user_profiles(email)')
   .eq('project_id', currentProject.id);
 
 
