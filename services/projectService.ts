@@ -12,6 +12,7 @@ export interface ProjectData {
   tasks: ProjectTask[];
   ganttData?: GanttItem[] | null;
   createdAt: string;
+  description?: string;
   updatedAt: string;
   lastModifiedBy?: string;
   version: number;
