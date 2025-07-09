@@ -215,13 +215,13 @@ const App: React.FC = () => {
     return unsubscribe;
   }, [currentProject?.id]);
 
- const loadProjectMembers = useCallback(async () => {
+　const loadProjectMembers = useCallback(async () => {
   if (!currentProject?.id) return;
 
   try {
     const { data, error } = await supabase
       .from('project_members')
-      .select('*, user:user_profiles(email)')
+      .select('*, user:user_id(email)')   // ← ここにリレーション指定を書く
       .eq('project_id', currentProject.id);
 
     if (error) {
@@ -233,6 +233,7 @@ const App: React.FC = () => {
     console.error('Failed to load project members:', error);
   }
 }, [currentProject?.id]);
+
 
 
   // Load project members when project changes
