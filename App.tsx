@@ -231,9 +231,10 @@ const App: React.FC = () => {
     loadProjectMembers();
   }, [loadProjectMembers]);
 
-  const generateUniqueId = useCallback((prefix: string = 'item'): string => {
-    return ${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)};
-  }, []);
+　　const generateUniqueId = useCallback((prefix: string = 'item'): string => {
+ 　　 return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+　　}, []);
+
 
   const setTasksWithHistory = useCallback((newTasks: ProjectTask[] | ((prev: ProjectTask[]) => ProjectTask[])) => {
     setTasks(prevTasks => {
