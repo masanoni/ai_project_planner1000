@@ -98,12 +98,6 @@ static async getProjectWithMembers(projectId: string): Promise<ProjectWithMetada
     userEmail: member.profiles?.email || '', // プロファイルから取得
   }));
 
-  return {
-    ...projectData, // プロジェクトデータ
-    members,
-    userRole: projectData.project_members[0]?.role || 'viewer',
-  };
-}
 
     return {
       id: projectData.id,
