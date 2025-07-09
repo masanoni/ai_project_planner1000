@@ -221,7 +221,7 @@ const loadProjectMembers = useCallback(async () => {
   try {
     const { data, error } = await supabase
       .from('project_members')
-      .select('*,  users(email), invited_by(email)')  // invited_byも一緒に取得したい場合
+      .select('*,  id(email), invited_by(email)')  // invited_byも一緒に取得したい場合
       .eq('project_id', currentProject.id);
 
     if (error) {
