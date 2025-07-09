@@ -148,12 +148,22 @@ const App: React.FC = () => {
   // Initialize authentication
   useEffect(() => {
     const initAuth = async () => {
+      if (!supabase) {
+        setUser(null);
+        setIsAuthLoading(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       setUser(session?.user ?? null);
       setIsAuthLoading(false);
     };
 
     initAuth();
+
+    if (!supabase) {
+      return;
+    }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);

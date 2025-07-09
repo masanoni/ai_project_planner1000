@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { ProjectTask, GanttItem, ProjectMember, ProjectInvitation, ProjectWithMetadata } from '../types';
 
+// Supabaseが利用できない場合のエラーメッセージ
+const SUPABASE_NOT_AVAILABLE = 'プロジェクトの保存・読み込み機能を使用するには、Supabaseの設定が必要です。';
+
 export interface ProjectData {
   id: string;
   title: string;
@@ -18,6 +21,10 @@ export interface ProjectData {
 export class ProjectService {
   // プロジェクト一覧を取得
   static async getProjects(): Promise<ProjectData[]> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('ログインが必要です');
@@ -52,6 +59,10 @@ export class ProjectService {
 
   // プロジェクトの詳細情報とメンバー情報を取得
   static async getProjectWithMembers(projectId: string): Promise<ProjectWithMetadata> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('ログインが必要です');
@@ -121,6 +132,10 @@ export class ProjectService {
     tasks: ProjectTask[] = [],
     ganttData?: GanttItem[] | null
   ): Promise<ProjectData> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('ログインが必要です');
@@ -172,6 +187,10 @@ export class ProjectService {
       expectedVersion?: number; // 楽観的ロック用
     }
   ): Promise<ProjectData> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('ログインが必要です');
@@ -233,6 +252,10 @@ export class ProjectService {
 
   // プロジェクトを削除
   static async deleteProject(id: string): Promise<void> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { error } = await supabase
       .from('projects')
       .delete()
@@ -245,6 +268,10 @@ export class ProjectService {
 
   // 特定のプロジェクトを取得
   static async getProject(id: string): Promise<ProjectData> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data, error } = await supabase
       .from('projects')
       .select(`
@@ -279,6 +306,10 @@ export class ProjectService {
     email: string,
     role: 'editor' | 'viewer'
   ): Promise<ProjectInvitation> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('ログインが必要です');
@@ -314,6 +345,10 @@ export class ProjectService {
 
   // 招待トークンでプロジェクトに参加
   static async joinProjectByInvitation(token: string): Promise<{ success: boolean; error?: string; project?: any }> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data, error } = await supabase.rpc('join_project_by_invitation', {
       invitation_token: token
     });
@@ -327,6 +362,10 @@ export class ProjectService {
 
   // プロジェクトの招待一覧を取得
   static async getProjectInvitations(projectId: string): Promise<ProjectInvitation[]> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { data, error } = await supabase
       .from('project_invitations')
       .select('*')
@@ -357,6 +396,10 @@ export class ProjectService {
     userId: string,
     newRole: 'owner' | 'editor' | 'viewer'
   ): Promise<void> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { error } = await supabase
       .from('project_members')
       .update({ role: newRole })
@@ -370,6 +413,10 @@ export class ProjectService {
 
   // メンバーをプロジェクトから削除
   static async removeMember(projectId: string, userId: string): Promise<void> {
+    if (!supabase) {
+      throw new Error(SUPABASE_NOT_AVAILABLE);
+    }
+
     const { error } = await supabase
       .from('project_members')
       .delete()
@@ -387,6 +434,11 @@ export class ProjectService {
     onProjectUpdate: (payload: any) => void,
     onMemberUpdate: (payload: any) => void
   ) {
+    if (!supabase) {
+      console.warn('Supabaseが設定されていないため、リアルタイム更新は無効です。');
+      return () => {}; // 空の関数を返す
+    }
+
     const projectChannel = supabase
       .channel(`project-${projectId}`)
       .on(

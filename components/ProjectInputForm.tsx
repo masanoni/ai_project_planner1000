@@ -1,3 +1,4 @@
+import { supabase } from '../lib/supabase';
 import React, { useState, useRef } from 'react';
 import LoadingSpinner from './LoadingSpinner';
 import { TargetIcon, CalendarIcon, UploadIcon, FolderIcon, KeyIcon } from './icons';
@@ -150,6 +151,7 @@ const ProjectInputForm: React.FC<ProjectInputFormProps> = ({
               type="submit"
               disabled={isLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out transform hover:scale-105 flex items-center justify-center text-md"
+            {supabase && (
             >
               {isLoading ? (
                 <LoadingSpinner size="sm" color="border-white" />
@@ -157,6 +159,7 @@ const ProjectInputForm: React.FC<ProjectInputFormProps> = ({
                 'AIで計画を作成'
               )}
             </button>
+            )}
             <button
               type="button"
               onClick={handleImportClick}
