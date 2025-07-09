@@ -560,6 +560,7 @@ a.click();
         targetDate,
         tasks,
         ganttData,
+        description: projectDescription,  // ← ここに追加
         expectedVersion: currentProject.version,
       });
       setCurrentProject(updatedProject);
