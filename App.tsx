@@ -219,15 +219,17 @@ const loadProjectMembers = useCallback(async () => {
   if (!currentProject?.id) return;
 
   try {
-    const { data, error } = await supabase
-      .from('project_members')
-      .select('*, user:auth.users(email)') // invited_byも一緒に取得したい場合
-      .eq('project_id', currentProject.id);
+   const { data, error } = await supabase
+  .from('project_members_with_email')
+  .select('*')
+  .eq('project_id', currentProject.id);
 
-    if (error) {
-      console.error('メンバー情報の取得に失敗しました:', error.message);
-    } else {
-      setProjectMembers(data as ProjectMember[]);
+if (error) {
+  console.error('メンバー情報の取得に失敗しました:', error.message);
+} else {
+  setProjectMembers(data); // 必要に応じて型付け
+}
+ 
     }
   } catch (error) {
     console.error('メンバー取得時の例外:', error);
