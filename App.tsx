@@ -120,6 +120,7 @@ const App: React.FC = () => {
   // Core application state
   const [viewState, setViewState] = useState<ViewState>(ViewState.INPUT_FORM);
   const [projectGoal, setProjectGoal] = useState<string>('');
+  const [projectDescription, setProjectDescription] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null);
