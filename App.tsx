@@ -215,36 +215,25 @@ const App: React.FC = () => {
     return unsubscribe;
   }, [currentProject?.id]);
 
-　const loadProjectMembers = useCallback(async () => {
-  if (!currentProject?.id) return;
-
-  try {
-    const { data, error } = await supabase
-      .from('project_members')
-      .select('*, user:user_id(email)')   // ← ここにリレーション指定を書く
-      .eq('project_id', currentProject.id);
-
-    if (error) {
-      throw error;
+  const loadProjectMembers = useCallback(async () => {
+    if (!currentProject?.id) return;
+    
+    try {
+      const projectWithMembers = await ProjectService.getProjectWithMembers(currentProject.id);
+      setProjectMembers(projectWithMembers.members || []);
+    } catch (error) {
+      console.error('Failed to load project members:', error);
     }
-
-    setProjectMembers(data || []);
-  } catch (error) {
-    console.error('Failed to load project members:', error);
-  }
-}, [currentProject?.id]);
-
-
+  }, [currentProject?.id]);
 
   // Load project members when project changes
   useEffect(() => {
     loadProjectMembers();
   }, [loadProjectMembers]);
 
-　　const generateUniqueId = useCallback((prefix: string = 'item'): string => {
- 　　 return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-　　}, []);
-
+  const generateUniqueId = useCallback((prefix: string = 'item'): string => {
+    return ${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)};
+  }, []);
 
   const setTasksWithHistory = useCallback((newTasks: ProjectTask[] | ((prev: ProjectTask[]) => ProjectTask[])) => {
     setTasks(prevTasks => {
@@ -428,7 +417,7 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `project-${Date.now()}.json`;
+    a.download = project-${Date.now()}.json;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
