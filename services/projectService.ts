@@ -82,31 +82,28 @@ export class ProjectService {
       throw new Error(`プロジェクトの取得に失敗しました: ${projectError.message}`);
     }
 
-    // メンバー情報を取得
-    const { data: membersData, error: membersError } = await supabase
-      .from('project_members')
-      .select(`
-        *,
-        user:auth.users(email)
-      `)
-      .eq('project_id', projectId)
-      .eq('status', 'accepted');
+// 修正後のメンバー情報取得部分
+const { data: membersData, error: membersError } = await supabase
+  .from('project_members')
+  .select(`
+    *,
+    profiles (email)  // profilesテーブル経由でemail取得
+  `)
+  .eq('project_id', projectId)
+  .eq('status', 'accepted');
 
-    if (membersError) {
-      throw new Error(`メンバー情報の取得に失敗しました: ${membersError.message}`);
-    }
-
-    const members: ProjectMember[] = membersData.map(member => ({
-      id: member.id,
-      projectId: member.project_id,
-      userId: member.user_id,
-      role: member.role,
-      invitedBy: member.invited_by,
-      invitedAt: member.invited_at,
-      joinedAt: member.joined_at,
-      status: member.status,
-      userEmail: member.user?.email,
-    }));
+// マッピング部分も修正
+const members: ProjectMember[] = membersData.map(member => ({
+  id: member.id,
+  projectId: member.project_id,
+  userId: member.user_id,
+  role: member.role,
+  invitedBy: member.invited_by,
+  invitedAt: member.invited_at,
+  joinedAt: member.joined_at,
+  status: member.status,
+  userEmail: member.profiles?.email,  // プロファイルからemail取得
+}));
 
     return {
       id: projectData.id,
