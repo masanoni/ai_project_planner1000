@@ -14,9 +14,31 @@ const InviteAcceptPage: React.FC = () => {
   const [result, setResult] = useState<{ success: boolean; error?: string; project?: any } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // useEffectの外に定義
+  // handleJoinProject は useEffect の外で一度だけ宣言
   const handleJoinProject = async () => {
-    // 処理内容をここに書く
+    if (!token) {
+      setResult({ success: false, error: '無効な招待リンクです' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const joinResult = await ProjectService.joinProjectByInvitation(token);
+      setResult(joinResult);
+
+      if (joinResult.success && joinResult.project) {
+        setTimeout(() => {
+          navigate('/');
+        }, 3000);
+      }
+    } catch (err) {
+      setResult({
+        success: false,
+        error: err instanceof Error ? err.message : 'プロジェクトへの参加に失敗しました',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -24,37 +46,26 @@ const InviteAcceptPage: React.FC = () => {
 
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user ?? null;
-      setUser(user);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
 
-      if (user && token) {
+      if (currentUser && token && !result) {
         await handleJoinProject();
       }
 
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
       });
+
       subscription = data;
     };
 
     initAuth();
 
- useEffect(() => {
-  let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
-
-  const initAuth = async () => {
-    // 初期処理（セッション取得やユーザーセットなど）
-  };
-
-  initAuth();
-
-  return () => {
-    subscription?.unsubscribe();
-  };
-}, [token]);
-
-
-
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [token]);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
