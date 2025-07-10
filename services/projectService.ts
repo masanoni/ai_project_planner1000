@@ -165,21 +165,32 @@ const { data: membersData, error: membersError } = await supabase
     };
   }
 
-  // プロジェクトを更新
-  static async updateProject(
-    id: string,
-    updates: {
-      title?: string;
-      goal?: string;
-      targetDate?: string;
-      tasks?: ProjectTask[];
-      ganttData?: GanttItem[] | null;
-      expectedVersion?: number; // 楽観的ロック用
-    }
-  ): Promise<ProjectData> {
-    if (!supabase) {
-      throw new Error(SUPABASE_NOT_AVAILABLE);
-    }
+ static async updateProject(
+  id: string,
+  updates: {
+    title?: string;
+    goal?: string;
+    targetDate?: string;
+    tasks?: ProjectTask[];
+    ganttData?: GanttItem[] | null;
+    expectedVersion?: number; // 楽観的ロック用
+  }
+): Promise<ProjectData> {
+  if (!supabase) {
+    throw new Error(SUPABASE_NOT_AVAILABLE);
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+
+  if (!user) {
+    throw new Error('ログインが必要です');
+  }
+
+  // ここから通常の更新処理
+  ...
+}
+
 
 　　　const { data: { session } } = await supabase.auth.getSession();
 const user = session?.user;
