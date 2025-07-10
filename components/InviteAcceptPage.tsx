@@ -14,28 +14,31 @@ const InviteAcceptPage: React.FC = () => {
   const [result, setResult] = useState<{ success: boolean; error?: string; project?: any } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
- useEffect(() => {
-  const getSessionAndListen = async () => {
+useEffect(() => {
+  let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
+
+  const initAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     const user = session?.user ?? null;
     setUser(user);
+
     if (user && token) {
-      handleJoinProject();
+      await handleJoinProject();
     }
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user ?? null;
-      setUser(user);
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
     });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
+    subscription = data;
   };
 
-  // 関数を呼び出す（忘れがち）
-  getSessionAndListen();
+  initAuth(); // 実行
+
+  return () => {
+    subscription?.unsubscribe();
+  };
 }, [token]);
+
 
 
 
