@@ -188,7 +188,7 @@ const { data: membersData, error: membersError } = await supabase
   }
 
   // ここから通常の更新処理
-  ...
+  
 }
 
 
