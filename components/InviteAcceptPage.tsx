@@ -15,13 +15,26 @@ const InviteAcceptPage: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
-    // 認証状態の確認
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user && token) {
-        handleJoinProject();
-      }
-    });
+  // 認証状態の確認
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    const user = session?.user ?? null;
+    setUser(user);
+    if (user && token) {
+      handleJoinProject();
+    }
+  });
+
+  // 認証状態の変化を監視（例: 他タブでログアウトされたときなど）
+  const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const user = session?.user ?? null;
+    setUser(user);
+  });
+
+  return () => {
+    authListener.subscription.unsubscribe();
+  };
+}, [token]);
+
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
