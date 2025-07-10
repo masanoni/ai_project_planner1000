@@ -172,7 +172,7 @@ const { data: membersData, error: membersError } = await supabase
       title?: string;
       goal?: string;
       targetDate?: string;
-      tasks_data?: ProjectTask[];
+      tasks?: ProjectTask[];
       ganttData?: GanttItem[] | null;
       expectedVersion?: number; // 楽観的ロック用
     }
@@ -208,7 +208,7 @@ const { data: membersData, error: membersError } = await supabase
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.goal !== undefined) updateData.goal = updates.goal;
     if (updates.targetDate !== undefined) updateData.target_date = updates.targetDate;
-    if (updates.tasks_data !== undefined) updateData.tasks_data = updates.tasks_data;
+    if (updates.tasks !== undefined) updateData.tasks_data = updates.tasks;
     if (updates.ganttData !== undefined) updateData.gantt_data = updates.ganttData;
     
     // バージョンを更新

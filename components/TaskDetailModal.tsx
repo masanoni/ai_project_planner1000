@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ProjectTask, EditableExtendedTaskDetails, SubStep, ActionItem, NumericalTarget, NumericalTargetStatus, SubStepStatus, SlideDeck, Attachment, Decision } from '../types';
-import { XIcon, SubtaskIcon, NotesIcon, ResourcesIcon, ResponsibleIcon, PlusCircleIcon, TrashIcon, CheckSquareIcon, SquareIcon, PaperClipIcon, SparklesIcon, PresentationChartBarIcon, ClipboardDocumentListIcon, LightBulbIcon, CalendarIcon, GaugeIcon } from './icons';
+import { XIcon, SubtaskIcon, NotesIcon, ResourcesIcon, ResponsibleIcon, PlusCircleIcon, TrashIcon, CheckSquareIcon, SquareIcon, PaperClipIcon, SparklesIcon, PresentationChartBarIcon, ClipboardDocumentListIcon, LightBulbIcon, CalendarIcon, GaugeIcon, RefreshIcon } from './icons';
 import { generateStepProposals, generateInitialSlideDeck } from '../services/geminiService';
 import ProposalReviewModal from './ProposalReviewModal';
 import SlideEditorView from './SlideEditorView';
@@ -30,6 +30,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   targetDate,
   canEdit = true 
 }) => {
+  const [activeTab, setActiveTab] = useState<'info' | 'substeps' | 'details'>('info');
   const [extendedDetails, setExtendedDetails] = useState<EditableExtendedTaskDetails>(() => ({
     subSteps: task.extendedDetails?.subSteps || [],
     resources: task.extendedDetails?.resources || '',
@@ -358,6 +359,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setIsDecisionModalOpen(false);
   };
 
+  const handleAutoLayout = () => {
+    if (!canEdit) return;
+    const updatedSubSteps = extendedDetails.subSteps.map((subStep, index) => ({
+      ...subStep,
+      position: {
+        x: 50 + (index % 3) * 300,
+        y: 50 + Math.floor(index / 3) * 250,
+      },
+    }));
+    updateExtendedDetails({ subSteps: updatedSubSteps });
+  };
+
   const connectors = useMemo(() => {
     const newConnectors: Array<{
       id: string;
@@ -490,288 +503,469 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             </div>
           </header>
 
-          <div className="flex-grow flex overflow-hidden">
-            <aside className="w-80 border-r border-slate-200 flex flex-col bg-slate-50">
-              <div className="p-4 space-y-4 overflow-y-auto flex-grow">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                    <ResponsibleIcon className="w-4 h-4 mr-2" />
-                    担当者
-                  </label>
-                  <input
-                    type="text"
-                    value={extendedDetails.responsible}
-                    onChange={(e) => updateExtendedDetails({ responsible: e.target.value })}
-                    disabled={!canEdit}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    placeholder="担当者名"
-                  />
-                </div>
+          {/* Tab Navigation */}
+          <div className="flex border-b border-slate-200 bg-slate-50">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'info' 
+                  ? 'border-blue-500 text-blue-600 bg-white' 
+                  : 'border-transparent text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              タスク情報
+            </button>
+            <button
+              onClick={() => setActiveTab('substeps')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'substeps' 
+                  ? 'border-blue-500 text-blue-600 bg-white' 
+                  : 'border-transparent text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              サブステップ計画 ({extendedDetails.subSteps.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'details' 
+                  ? 'border-blue-500 text-blue-600 bg-white' 
+                  : 'border-transparent text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              サブステップの詳細
+            </button>
+          </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                    <CalendarIcon className="w-4 h-4 mr-2" />
-                    期日
-                  </label>
-                  <input
-                    type="date"
-                    value={extendedDetails.dueDate}
-                    onChange={(e) => updateExtendedDetails({ dueDate: e.target.value })}
-                    disabled={!canEdit}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                    <ResourcesIcon className="w-4 h-4 mr-2" />
-                    必要なリソース
-                  </label>
-                  <textarea
-                    value={extendedDetails.resources}
-                    onChange={(e) => updateExtendedDetails({ resources: e.target.value })}
-                    disabled={!canEdit}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    placeholder="必要な人員、設備、予算など"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                    <NotesIcon className="w-4 h-4 mr-2" />
-                    メモ・備考
-                  </label>
-                  <textarea
-                    value={extendedDetails.notes}
-                    onChange={(e) => updateExtendedDetails({ notes: e.target.value })}
-                    disabled={!canEdit}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                    placeholder="追加の情報や注意事項"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                    <GaugeIcon className="w-4 h-4 mr-2" />
-                    数値目標
-                  </label>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={extendedDetails.numericalTarget?.description || ''}
-                      onChange={(e) => updateExtendedDetails({ 
-                        numericalTarget: { 
-                          ...extendedDetails.numericalTarget, 
-                          description: e.target.value,
-                          targetValue: extendedDetails.numericalTarget?.targetValue || '',
-                          unit: extendedDetails.numericalTarget?.unit || '',
-                        } as NumericalTarget
-                      })}
-                      disabled={!canEdit}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                      placeholder="目標の説明"
-                    />
-                    <div className="flex space-x-2">
+          <div className="flex-grow overflow-hidden">
+            {/* タスク情報タブ */}
+            {activeTab === 'info' && (
+              <div className="p-6 overflow-y-auto h-full">
+                <div className="max-w-2xl mx-auto space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                        <ResponsibleIcon className="w-4 h-4 mr-2" />
+                        担当者
+                      </label>
                       <input
                         type="text"
-                        value={extendedDetails.numericalTarget?.targetValue || ''}
+                        value={extendedDetails.responsible}
+                        onChange={(e) => updateExtendedDetails({ responsible: e.target.value })}
+                        disabled={!canEdit}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="担当者名"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                        <CalendarIcon className="w-4 h-4 mr-2" />
+                        期日
+                      </label>
+                      <input
+                        type="date"
+                        value={extendedDetails.dueDate}
+                        onChange={(e) => updateExtendedDetails({ dueDate: e.target.value })}
+                        disabled={!canEdit}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                      <ResourcesIcon className="w-4 h-4 mr-2" />
+                      必要なリソース
+                    </label>
+                    <textarea
+                      value={extendedDetails.resources}
+                      onChange={(e) => updateExtendedDetails({ resources: e.target.value })}
+                      disabled={!canEdit}
+                      rows={4}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="必要な人員、設備、予算など"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                      <NotesIcon className="w-4 h-4 mr-2" />
+                      メモ・備考
+                    </label>
+                    <textarea
+                      value={extendedDetails.notes}
+                      onChange={(e) => updateExtendedDetails({ notes: e.target.value })}
+                      disabled={!canEdit}
+                      rows={6}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="追加の情報や注意事項"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                      <GaugeIcon className="w-4 h-4 mr-2" />
+                      数値目標
+                    </label>
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={extendedDetails.numericalTarget?.description || ''}
                         onChange={(e) => updateExtendedDetails({ 
                           numericalTarget: { 
                             ...extendedDetails.numericalTarget, 
-                            targetValue: e.target.value,
-                            description: extendedDetails.numericalTarget?.description || '',
+                            description: e.target.value,
+                            targetValue: extendedDetails.numericalTarget?.targetValue || '',
                             unit: extendedDetails.numericalTarget?.unit || '',
                           } as NumericalTarget
                         })}
                         disabled={!canEdit}
-                        className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                        placeholder="目標値"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="目標の説明"
                       />
-                      <input
-                        type="text"
-                        value={extendedDetails.numericalTarget?.unit || ''}
-                        onChange={(e) => updateExtendedDetails({ 
-                          numericalTarget: { 
-                            ...extendedDetails.numericalTarget, 
-                            unit: e.target.value,
-                            description: extendedDetails.numericalTarget?.description || '',
-                            targetValue: extendedDetails.numericalTarget?.targetValue || '',
-                          } as NumericalTarget
-                        })}
-                        disabled={!canEdit}
-                        className="w-20 px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                        placeholder="単位"
-                      />
-                    </div>
-                    {extendedDetails.numericalTarget && (
-                      <div className="flex space-x-2">
+                      <div className="grid grid-cols-2 gap-3">
                         <input
                           type="text"
-                          value={extendedDetails.numericalTarget.currentValue || ''}
+                          value={extendedDetails.numericalTarget?.targetValue || ''}
                           onChange={(e) => updateExtendedDetails({ 
                             numericalTarget: { 
                               ...extendedDetails.numericalTarget, 
-                              currentValue: e.target.value 
-                            } 
+                              targetValue: e.target.value,
+                              description: extendedDetails.numericalTarget?.description || '',
+                              unit: extendedDetails.numericalTarget?.unit || '',
+                            } as NumericalTarget
                           })}
                           disabled={!canEdit}
-                          className="flex-1 px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                          placeholder="現在値"
+                          className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="目標値"
                         />
-                        <select
-                          value={extendedDetails.numericalTarget.status || NumericalTargetStatus.PENDING}
+                        <input
+                          type="text"
+                          value={extendedDetails.numericalTarget?.unit || ''}
                           onChange={(e) => updateExtendedDetails({ 
                             numericalTarget: { 
                               ...extendedDetails.numericalTarget, 
-                              status: e.target.value as NumericalTargetStatus 
-                            } 
+                              unit: e.target.value,
+                              description: extendedDetails.numericalTarget?.description || '',
+                              targetValue: extendedDetails.numericalTarget?.targetValue || '',
+                            } as NumericalTarget
                           })}
                           disabled={!canEdit}
-                          className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
-                        >
-                          <option value={NumericalTargetStatus.PENDING}>進行中</option>
-                          <option value={NumericalTargetStatus.ACHIEVED}>達成</option>
-                          <option value={NumericalTargetStatus.MISSED}>未達成</option>
-                        </select>
+                          className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="単位"
+                        />
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-semibold text-slate-700 flex items-center">
-                      <PaperClipIcon className="w-4 h-4 mr-2" />
-                      添付ファイル ({extendedDetails.attachments.length})
-                    </label>
-                    {canEdit && (
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        追加
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    multiple={false}
-                  />
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {extendedDetails.attachments.map(attachment => (
-                      <div key={attachment.id} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-md">
-                        <a
-                          href={attachment.dataUrl}
-                          download={attachment.name}
-                          className="text-sm text-blue-600 hover:underline truncate flex-1"
-                          title={attachment.name}
-                        >
-                          {attachment.name}
-                        </a>
-                        {canEdit && (
-                          <button
-                            onClick={() => handleRemoveAttachment(attachment.id)}
-                            className="text-red-500 hover:text-red-700 ml-2"
+                      {extendedDetails.numericalTarget && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={extendedDetails.numericalTarget.currentValue || ''}
+                            onChange={(e) => updateExtendedDetails({ 
+                              numericalTarget: { 
+                                ...extendedDetails.numericalTarget, 
+                                currentValue: e.target.value 
+                              } 
+                            })}
+                            disabled={!canEdit}
+                            className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="現在値"
+                          />
+                          <select
+                            value={extendedDetails.numericalTarget.status || NumericalTargetStatus.PENDING}
+                            onChange={(e) => updateExtendedDetails({ 
+                              numericalTarget: { 
+                                ...extendedDetails.numericalTarget, 
+                                status: e.target.value as NumericalTargetStatus 
+                              } 
+                            })}
+                            disabled={!canEdit}
+                            className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                           >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-slate-200 space-y-2">
-                {proposalError && <ErrorMessage message={proposalError} />}
-                {reportError && <ErrorMessage message={reportError} />}
-                
-                {canEdit && (
-                  <button
-                    onClick={handleGenerateProposals}
-                    disabled={isGeneratingProposals}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-slate-400"
-                  >
-                    {isGeneratingProposals ? <LoadingSpinner size="sm" color="border-white" /> : <SparklesIcon className="w-4 h-4" />}
-                    AIでステップ提案
-                  </button>
-                )}
-                
-                {canEdit && (
-                  <button
-                    onClick={handleAddSubStep}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300"
-                  >
-                    <PlusCircleIcon className="w-4 h-4" />
-                    サブステップ追加
-                  </button>
-                )}
-              </div>
-            </aside>
-
-            <main className="flex-1 flex flex-col">
-              <div className="p-4 border-b border-slate-200 bg-slate-50">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-lg font-semibold text-slate-800 flex items-center">
-                    <SubtaskIcon className="w-5 h-5 mr-2" />
-                    サブステップ ({extendedDetails.subSteps.length})
-                  </h4>
-                  <div className="text-sm text-slate-600">
-                    進捗: {completedActionItems}/{totalActionItems} アクションアイテム完了
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                ref={subStepCanvasRef}
-                className="flex-1 overflow-auto bg-slate-100 relative p-4"
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                style={{ minHeight: '600px' }}
-              >
-                {extendedDetails.subSteps.length === 0 ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <SubtaskIcon className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-                      <p className="text-slate-500 text-lg mb-4">サブステップがありません</p>
-                      <p className="text-slate-400 text-sm">
-                        {canEdit ? 'AIでステップ提案を生成するか、手動でサブステップを追加してください。' : 'サブステップが設定されていません。'}
-                      </p>
+                            <option value={NumericalTargetStatus.PENDING}>進行中</option>
+                            <option value={NumericalTargetStatus.ACHIEVED}>達成</option>
+                            <option value={NumericalTargetStatus.MISSED}>未達成</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    {extendedDetails.subSteps.map((subStep) => (
-                      <div
-                        key={subStep.id}
-                        className={`absolute bg-white rounded-lg shadow-md border-l-4 ${getStatusColor(subStep.status)} p-4 w-80 min-h-40`}
-                        style={{
-                          left: subStep.position?.x || 0,
-                          top: subStep.position?.y || 0,
+
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-sm font-semibold text-slate-700 flex items-center">
+                        <PaperClipIcon className="w-4 h-4 mr-2" />
+                        添付ファイル ({extendedDetails.attachments.length})
+                      </label>
+                      {canEdit && (
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                        >
+                          ファイル追加
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      multiple={false}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {extendedDetails.attachments.map(attachment => (
+                        <div key={attachment.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-md">
+                          <a
+                            href={attachment.dataUrl}
+                            download={attachment.name}
+                            className="text-sm text-blue-600 hover:underline truncate flex-1"
+                            title={attachment.name}
+                          >
+                            {attachment.name}
+                          </a>
+                          {canEdit && (
+                            <button
+                              onClick={() => handleRemoveAttachment(attachment.id)}
+                              className="text-red-500 hover:text-red-700 ml-2"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* サブステップ計画タブ */}
+            {activeTab === 'substeps' && (
+              <div className="flex flex-col h-full">
+                <div className="p-4 border-b border-slate-200 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-lg font-semibold text-slate-800 flex items-center">
+                      <SubtaskIcon className="w-5 h-5 mr-2" />
+                      サブステップフロー ({extendedDetails.subSteps.length})
+                    </h4>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-slate-600">
+                        進捗: {completedActionItems}/{totalActionItems} アクション完了
+                      </span>
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={handleAutoLayout}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300"
+                            title="自動整列"
+                          >
+                            <RefreshIcon className="w-4 h-4" />
+                            整列
+                          </button>
+                          <button
+                            onClick={handleGenerateProposals}
+                            disabled={isGeneratingProposals}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-slate-400"
+                          >
+                            {isGeneratingProposals ? <LoadingSpinner size="sm" color="border-white" /> : <SparklesIcon className="w-4 h-4" />}
+                            AIで提案
+                          </button>
+                          <button
+                            onClick={handleAddSubStep}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700"
+                          >
+                            <PlusCircleIcon className="w-4 h-4" />
+                            追加
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {proposalError && <ErrorMessage message={proposalError} />}
+                  {reportError && <ErrorMessage message={reportError} />}
+                </div>
+
+                <div 
+                  ref={subStepCanvasRef}
+                  className="flex-1 overflow-auto bg-slate-100 relative p-4"
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  style={{ minHeight: '600px' }}
+                >
+                  {extendedDetails.subSteps.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <SubtaskIcon className="w-16 h-16 mx-auto text-slate-400 mb-4" />
+                        <p className="text-slate-500 text-lg mb-4">サブステップがありません</p>
+                        <p className="text-slate-400 text-sm">
+                          {canEdit ? 'AIでステップ提案を生成するか、手動でサブステップを追加してください。' : 'サブステップが設定されていません。'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {extendedDetails.subSteps.map((subStep) => (
+                        <div
+                          key={subStep.id}
+                          className={`absolute bg-white rounded-lg shadow-md border-l-4 ${getStatusColor(subStep.status)} p-3 w-64`}
+                          style={{
+                            left: subStep.position?.x || 0,
+                            top: subStep.position?.y || 0,
+                          }}
+                          onMouseUp={() => handleEndConnection(subStep.id)}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1 min-w-0">
+                              <input
+                                type="text"
+                                value={subStep.text}
+                                onChange={(e) => handleUpdateSubStep(subStep.id, { text: e.target.value })}
+                                disabled={!canEdit}
+                                className="w-full font-semibold text-slate-800 bg-transparent border-none outline-none text-sm"
+                              />
+                              <div className="flex items-center gap-2 mt-1">
+                                {getStatusBadge(subStep.status)}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-1 ml-2">
+                              {canEdit && (
+                                <div
+                                  onMouseDown={(e) => handleStartConnection(subStep.id, e)}
+                                  className="w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-125 transition-transform"
+                                  title="ドラッグして接続"
+                                />
+                              )}
+                              {canEdit && (
+                                <button
+                                  onClick={() => handleRemoveSubStep(subStep.id)}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="削除"
+                                >
+                                  <TrashIcon className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 text-xs">
+                            <div>
+                              <span className="font-medium text-slate-600">担当:</span>
+                              <span className="ml-1 text-slate-800">{subStep.responsible || '未設定'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-slate-600">期日:</span>
+                              <span className="ml-1 text-slate-800">
+                                {subStep.dueDate ? new Date(subStep.dueDate + 'T00:00:00Z').toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }) : '未設定'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-slate-600">アクション:</span>
+                              <span className="ml-1 text-slate-800">
+                                {(subStep.actionItems || []).filter(ai => ai.completed).length}/{(subStep.actionItems || []).length}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <svg 
+                        style={{ 
+                          position: 'absolute', 
+                          top: 0, 
+                          left: 0, 
+                          width: '100%', 
+                          height: '100%', 
+                          pointerEvents: 'none',
+                          overflow: 'visible'
                         }}
-                        onMouseUp={() => handleEndConnection(subStep.id)}
                       >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 min-w-0">
+                        <defs>
+                          <marker
+                            id="arrowhead-substep"
+                            markerWidth="8"
+                            markerHeight="6"
+                            refX="8"
+                            refY="3"
+                            orient="auto"
+                            markerUnits="strokeWidth"
+                          >
+                            <path d="M0,0 L8,3 L0,6 Z" fill="#64748b" />
+                          </marker>
+                        </defs>
+                        
+                        {connectors.map(conn => (
+                          <g key={conn.id}>
+                            <path
+                              d={`M${conn.from.x},${conn.from.y} C${conn.from.x + 50},${conn.from.y} ${conn.to.x - 50},${conn.to.y} ${conn.to.x},${conn.to.y}`}
+                              stroke="#64748b"
+                              strokeWidth="2"
+                              markerEnd="url(#arrowhead-substep)"
+                              fill="none"
+                            />
+                            {canEdit && (
+                              <circle
+                                cx={(conn.from.x + conn.to.x) / 2}
+                                cy={(conn.from.y + conn.to.y) / 2}
+                                r="8"
+                                fill="white"
+                                stroke="#ef4444"
+                                strokeWidth="2"
+                                className="cursor-pointer hover:fill-red-100"
+                                onClick={() => handleDeleteConnection(conn.sourceId, conn.targetId)}
+                                style={{ pointerEvents: 'auto' }}
+                              />
+                            )}
+                          </g>
+                        ))}
+                        
+                        {connectingState && (
+                          <path
+                            d={`M${connectingState.fromPos.x},${connectingState.fromPos.y} L${mousePos.x},${mousePos.y}`}
+                            stroke="#3b82f6"
+                            strokeWidth="2"
+                            strokeDasharray="5,5"
+                            fill="none"
+                          />
+                        )}
+                      </svg>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* サブステップの詳細タブ */}
+            {activeTab === 'details' && (
+              <div className="p-6 overflow-y-auto h-full">
+                <div className="space-y-6">
+                  {extendedDetails.subSteps.length === 0 ? (
+                    <div className="text-center py-12">
+                      <SubtaskIcon className="w-16 h-16 mx-auto text-slate-400 mb-4" />
+                      <p className="text-slate-500 text-lg">サブステップがありません</p>
+                      <p className="text-slate-400 text-sm mt-2">
+                        まず「サブステップ計画」タブでサブステップを作成してください。
+                      </p>
+                    </div>
+                  ) : (
+                    extendedDetails.subSteps.map((subStep) => (
+                      <div key={subStep.id} className="bg-white border border-slate-200 rounded-lg p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
                             <input
                               type="text"
                               value={subStep.text}
                               onChange={(e) => handleUpdateSubStep(subStep.id, { text: e.target.value })}
                               disabled={!canEdit}
-                              className="w-full font-semibold text-slate-800 bg-transparent border-none outline-none text-sm"
+                              className="text-lg font-semibold text-slate-800 bg-transparent border-none outline-none w-full"
                             />
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-3 mt-2">
                               {getStatusBadge(subStep.status)}
                               {canEdit && (
                                 <select
                                   value={subStep.status || SubStepStatus.NOT_STARTED}
                                   onChange={(e) => handleUpdateSubStep(subStep.id, { status: e.target.value as SubStepStatus })}
-                                  className="text-xs border border-slate-300 rounded px-1 py-0.5"
+                                  className="text-sm border border-slate-300 rounded px-2 py-1"
                                 >
                                   <option value={SubStepStatus.NOT_STARTED}>未着手</option>
                                   <option value={SubStepStatus.IN_PROGRESS}>進行中</option>
@@ -780,97 +974,80 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center space-x-1 ml-2">
-                            {canEdit && (
-                              <div
-                                onMouseDown={(e) => handleStartConnection(subStep.id, e)}
-                                className="w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-125 transition-transform"
-                                title="ドラッグして接続"
-                              />
-                            )}
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleShowActionItemTable(subStep.id)}
+                              className="text-sm text-blue-600 hover:text-blue-800"
+                              title="アクションアイテム一覧"
+                            >
+                              一覧表示
+                            </button>
                             {canEdit && (
                               <button
-                                onClick={() => handleRemoveSubStep(subStep.id)}
-                                className="text-red-500 hover:text-red-700 p-1"
-                                title="削除"
+                                onClick={() => handleAddActionItem(subStep.id)}
+                                className="text-sm text-green-600 hover:text-green-800"
+                                title="アクションアイテム追加"
                               >
-                                <TrashIcon className="w-4 h-4" />
+                                アクション追加
                               </button>
                             )}
                           </div>
                         </div>
 
-                        <div className="space-y-2 mb-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                           <div>
-                            <label className="text-xs font-medium text-slate-600">担当者:</label>
+                            <label className="text-sm font-medium text-slate-600">担当者</label>
                             <input
                               type="text"
                               value={subStep.responsible || ''}
                               onChange={(e) => handleUpdateSubStep(subStep.id, { responsible: e.target.value })}
                               disabled={!canEdit}
-                              className="w-full text-xs border border-slate-300 rounded px-2 py-1 mt-1"
+                              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-md"
                               placeholder="担当者名"
                             />
                           </div>
                           <div>
-                            <label className="text-xs font-medium text-slate-600">期日:</label>
+                            <label className="text-sm font-medium text-slate-600">期日</label>
                             <input
                               type="date"
                               value={subStep.dueDate || ''}
                               onChange={(e) => handleUpdateSubStep(subStep.id, { dueDate: e.target.value })}
                               disabled={!canEdit}
-                              className="w-full text-xs border border-slate-300 rounded px-2 py-1 mt-1"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-slate-600">メモ:</label>
-                            <textarea
-                              value={subStep.notes || ''}
-                              onChange={(e) => handleUpdateSubStep(subStep.id, { notes: e.target.value })}
-                              disabled={!canEdit}
-                              rows={2}
-                              className="w-full text-xs border border-slate-300 rounded px-2 py-1 mt-1"
-                              placeholder="詳細な説明や注意事項"
+                              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-md"
                             />
                           </div>
                         </div>
 
-                        <div className="border-t border-slate-200 pt-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-slate-600">
+                        <div className="mb-4">
+                          <label className="text-sm font-medium text-slate-600">メモ・詳細</label>
+                          <textarea
+                            value={subStep.notes || ''}
+                            onChange={(e) => handleUpdateSubStep(subStep.id, { notes: e.target.value })}
+                            disabled={!canEdit}
+                            rows={3}
+                            className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-md"
+                            placeholder="詳細な説明や注意事項"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <h5 className="text-sm font-medium text-slate-700">
                               アクションアイテム ({(subStep.actionItems || []).filter(ai => ai.completed).length}/{(subStep.actionItems || []).length})
-                            </span>
-                            <div className="flex items-center space-x-1">
-                              <button
-                                onClick={() => handleShowActionItemTable(subStep.id)}
-                                className="text-xs text-blue-600 hover:text-blue-800"
-                                title="アクションアイテム一覧を表示"
-                              >
-                                一覧
-                              </button>
-                              {canEdit && (
-                                <button
-                                  onClick={() => handleAddActionItem(subStep.id)}
-                                  className="text-xs text-green-600 hover:text-green-800"
-                                  title="アクションアイテムを追加"
-                                >
-                                  追加
-                                </button>
-                              )}
-                            </div>
+                            </h5>
                           </div>
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                          <div className="space-y-3">
                             {(subStep.actionItems || []).map((actionItem) => (
-                              <div key={actionItem.id} className="flex items-start space-x-2 text-xs">
+                              <div key={actionItem.id} className="flex items-start space-x-3 p-3 bg-slate-50 rounded-md">
                                 <button
                                   onClick={() => handleUpdateActionItem(subStep.id, actionItem.id, { completed: !actionItem.completed })}
                                   disabled={!canEdit}
-                                  className="mt-0.5 flex-shrink-0"
+                                  className="mt-1 flex-shrink-0"
                                 >
                                   {actionItem.completed ? (
-                                    <CheckSquareIcon className="w-4 h-4 text-green-600" />
+                                    <CheckSquareIcon className="w-5 h-5 text-green-600" />
                                   ) : (
-                                    <SquareIcon className="w-4 h-4 text-slate-400" />
+                                    <SquareIcon className="w-5 h-5 text-slate-400" />
                                   )}
                                 </button>
                                 <div className="flex-1 min-w-0">
@@ -879,15 +1056,15 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                     value={actionItem.text}
                                     onChange={(e) => handleUpdateActionItem(subStep.id, actionItem.id, { text: e.target.value })}
                                     disabled={!canEdit}
-                                    className={`w-full bg-transparent border-none outline-none ${actionItem.completed ? 'line-through text-slate-500' : 'text-slate-800'}`}
+                                    className={`w-full bg-transparent border-none outline-none font-medium ${actionItem.completed ? 'line-through text-slate-500' : 'text-slate-800'}`}
                                   />
-                                  <div className="flex items-center space-x-2 mt-1">
+                                  <div className="grid grid-cols-2 gap-3 mt-2">
                                     <input
                                       type="text"
                                       value={actionItem.responsible || ''}
                                       onChange={(e) => handleUpdateActionItem(subStep.id, actionItem.id, { responsible: e.target.value })}
                                       disabled={!canEdit}
-                                      className="flex-1 text-xs border border-slate-300 rounded px-1 py-0.5"
+                                      className="text-sm border border-slate-300 rounded px-2 py-1"
                                       placeholder="担当者"
                                     />
                                     <input
@@ -895,14 +1072,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                       value={actionItem.dueDate || ''}
                                       onChange={(e) => handleUpdateActionItem(subStep.id, actionItem.id, { dueDate: e.target.value })}
                                       disabled={!canEdit}
-                                      className="text-xs border border-slate-300 rounded px-1 py-0.5"
+                                      className="text-sm border border-slate-300 rounded px-2 py-1"
                                     />
                                   </div>
                                 </div>
-                                <div className="flex items-center space-x-1">
+                                <div className="flex items-center space-x-2">
                                   <button
                                     onClick={() => handleActionItemReport(subStep.id, actionItem)}
-                                    className="text-blue-600 hover:text-blue-800"
+                                    className="text-blue-600 hover:text-blue-800 text-sm"
                                     title="実施レポート"
                                   >
                                     📊
@@ -913,7 +1090,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                                       className="text-red-500 hover:text-red-700"
                                       title="削除"
                                     >
-                                      <TrashIcon className="w-3 h-3" />
+                                      <TrashIcon className="w-4 h-4" />
                                     </button>
                                   )}
                                 </div>
@@ -922,72 +1099,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                           </div>
                         </div>
                       </div>
-                    ))}
-
-                    <svg 
-                      style={{ 
-                        position: 'absolute', 
-                        top: 0, 
-                        left: 0, 
-                        width: '100%', 
-                        height: '100%', 
-                        pointerEvents: 'none',
-                        overflow: 'visible'
-                      }}
-                    >
-                      <defs>
-                        <marker
-                          id="arrowhead-substep"
-                          markerWidth="8"
-                          markerHeight="6"
-                          refX="8"
-                          refY="3"
-                          orient="auto"
-                          markerUnits="strokeWidth"
-                        >
-                          <path d="M0,0 L8,3 L0,6 Z" fill="#64748b" />
-                        </marker>
-                      </defs>
-                      
-                      {connectors.map(conn => (
-                        <g key={conn.id}>
-                          <path
-                            d={`M${conn.from.x},${conn.from.y} C${conn.from.x + 50},${conn.from.y} ${conn.to.x - 50},${conn.to.y} ${conn.to.x},${conn.to.y}`}
-                            stroke="#64748b"
-                            strokeWidth="2"
-                            markerEnd="url(#arrowhead-substep)"
-                            fill="none"
-                          />
-                          {canEdit && (
-                            <circle
-                              cx={(conn.from.x + conn.to.x) / 2}
-                              cy={(conn.from.y + conn.to.y) / 2}
-                              r="8"
-                              fill="white"
-                              stroke="#ef4444"
-                              strokeWidth="2"
-                              className="cursor-pointer hover:fill-red-100"
-                              onClick={() => handleDeleteConnection(conn.sourceId, conn.targetId)}
-                              style={{ pointerEvents: 'auto' }}
-                            />
-                          )}
-                        </g>
-                      ))}
-                      
-                      {connectingState && (
-                        <path
-                          d={`M${connectingState.fromPos.x},${connectingState.fromPos.y} L${mousePos.x},${mousePos.y}`}
-                          stroke="#3b82f6"
-                          strokeWidth="2"
-                          strokeDasharray="5,5"
-                          fill="none"
-                        />
-                      )}
-                    </svg>
-                  </>
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </main>
+            )}
           </div>
         </div>
       </div>
