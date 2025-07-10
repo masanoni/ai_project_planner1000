@@ -12,7 +12,6 @@ export interface ProjectData {
   tasks: ProjectTask[];
   ganttData?: GanttItem[] | null;
   createdAt: string;
-  description?: string;
   updatedAt: string;
   lastModifiedBy?: string;
   version: number;
@@ -74,11 +73,15 @@ static async getProjectWithMembers(projectId: string): Promise<ProjectWithMetada
 
   if (projectError) throw new Error(`プロジェクト取得エラー: ${projectError.message}`);
 
-// 修正後
-const { data: membersData, error: membersError } = await supabase
-  .from('project_members_with_email')
-  .select('*')
-  .eq('project_id', projectId);
+  // メンバー情報取得 (user_profiles view経由)
+  const { data: membersData, error: membersError } = await supabase
+    .from('project_members')
+    .select(`
+      *,
+      user_profiles!inner(email)
+    `)
+    .eq('project_id', projectId)
+    .eq('status', 'accepted');
 
   if (membersError) {
     console.error('メンバー取得エラー詳細:', membersError);
@@ -95,7 +98,7 @@ const { data: membersData, error: membersError } = await supabase
     invitedAt: member.invited_at,
     joinedAt: member.joined_at,
     status: member.status,
-    userEmail: member.profiles?.email || '', // プロファイルから取得
+    userEmail: member.user_profiles?.email || '', // user_profilesから取得
   }));
 
 
@@ -173,7 +176,7 @@ const { data: membersData, error: membersError } = await supabase
       title?: string;
       goal?: string;
       targetDate?: string;
-      tasks?: ProjectTask[];
+      tasks_data?: ProjectTask[];
       ganttData?: GanttItem[] | null;
       expectedVersion?: number; // 楽観的ロック用
     }
@@ -209,8 +212,11 @@ const { data: membersData, error: membersError } = await supabase
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.goal !== undefined) updateData.goal = updates.goal;
     if (updates.targetDate !== undefined) updateData.target_date = updates.targetDate;
-    if (updates.tasks !== undefined) updateData.tasks_data = updates.tasks;
+    if (updates.tasks_data !== undefined) updateData.tasks_data = updates.tasks_data;
     if (updates.ganttData !== undefined) updateData.gantt_data = updates.ganttData;
+    
+    // バージョンを更新
+    updateData.version = (updates.expectedVersion || 1) + 1;
 
     const { data, error } = await supabase
       .from('projects')

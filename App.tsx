@@ -120,7 +120,6 @@ const App: React.FC = () => {
   // Core application state
   const [viewState, setViewState] = useState<ViewState>(ViewState.INPUT_FORM);
   const [projectGoal, setProjectGoal] = useState<string>('');
-  const [projectDescription, setProjectDescription] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null);
@@ -329,11 +328,14 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks: updatedTasks,
+          tasks_data: updatedTasks,
           expectedVersion: currentProject.version,
         });
+        // Update current project version after successful save
+        setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
       } catch (error) {
         console.error('Failed to auto-save project:', error);
+        alert('プロジェクトの自動保存に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
       }
     }
   }, [tasks, setTasksWithHistory, currentProject]);
@@ -348,9 +350,10 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks: updatedTasks,
+          tasks_data: updatedTasks,
           expectedVersion: currentProject.version,
         });
+        setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
       } catch (error) {
         console.error('Failed to auto-save project:', error);
       }
@@ -367,9 +370,10 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks: updatedTasks,
+          tasks_data: updatedTasks,
           expectedVersion: currentProject.version,
         });
+        setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
       } catch (error) {
         console.error('Failed to auto-save project:', error);
       }
@@ -386,9 +390,10 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks: updatedTasks,
+          tasks_data: updatedTasks,
           expectedVersion: currentProject.version,
         });
+        setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
       } catch (error) {
         console.error('Failed to auto-save project:', error);
       }
@@ -560,9 +565,9 @@ a.click();
         targetDate,
         tasks,
         ganttData,
-        description: projectDescription,  // ← ここに追加
         expectedVersion: currentProject.version,
       });
+      setCurrentProject(updatedProject);
       setCurrentProject(updatedProject);
     } else {
       // This case is handled in ProjectFlowDisplay
