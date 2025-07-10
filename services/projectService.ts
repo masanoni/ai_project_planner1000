@@ -180,14 +180,7 @@ const { data: membersData, error: membersError } = await supabase
     if (!supabase) {
       throw new Error(SUPABASE_NOT_AVAILABLE);
     }
-  // ここに追加
-  static async updateTaskInProject(
-    projectId: string,
-    updatedTask: ProjectTask,
-    expectedVersion?: number
-  ): Promise<void> {
-    // ... 省略 ...
-  }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('ログインが必要です');
@@ -248,6 +241,16 @@ const { data: membersData, error: membersError } = await supabase
       version: data.version,
       userRole: data.project_members[0]?.role || 'viewer',
     };
+  }
+  // ここで updateProjectメソッドは閉じる
+
+  // 新しいメソッドをここに追加
+  static async updateTaskInProject(
+    projectId: string,
+    updatedTask: ProjectTask,
+    expectedVersion?: number
+  ): Promise<void> {
+    // 実装
   }
 
   // プロジェクトを削除
