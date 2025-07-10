@@ -328,7 +328,7 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks_data: updatedTasks,
+          tasks: updatedTasks,
           expectedVersion: currentProject.version,
         });
         // Update current project version after successful save
@@ -350,7 +350,7 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks_data: updatedTasks,
+          tasks: updatedTasks,
           expectedVersion: currentProject.version,
         });
         setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
@@ -370,7 +370,7 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks_data: updatedTasks,
+          tasks: updatedTasks,
           expectedVersion: currentProject.version,
         });
         setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
@@ -390,7 +390,7 @@ const App: React.FC = () => {
     if (currentProject?.id && (currentProject.userRole === 'owner' || currentProject.userRole === 'editor')) {
       try {
         await ProjectService.updateProject(currentProject.id, {
-          tasks_data: updatedTasks,
+          tasks: updatedTasks,
           expectedVersion: currentProject.version,
         });
         setCurrentProject(prev => prev ? { ...prev, version: prev.version + 1 } : null);
@@ -567,7 +567,6 @@ a.click();
         ganttData,
         expectedVersion: currentProject.version,
       });
-      setCurrentProject(updatedProject);
       setCurrentProject(updatedProject);
     } else {
       // This case is handled in ProjectFlowDisplay
