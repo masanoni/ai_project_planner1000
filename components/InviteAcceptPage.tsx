@@ -14,23 +14,38 @@ const InviteAcceptPage: React.FC = () => {
   const [result, setResult] = useState<{ success: boolean; error?: string; project?: any } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-useEffect(() => {
-  let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
-
-  const initAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user ?? null;
-    setUser(user);
-
-    if (user && token) {
-      await handleJoinProject();
-    }
-
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    subscription = data;
+  // useEffectの外に定義
+  const handleJoinProject = async () => {
+    // 処理内容をここに書く
   };
+
+  useEffect(() => {
+    let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
+
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
+      setUser(user);
+
+      if (user && token) {
+        await handleJoinProject();
+      }
+
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+      });
+      subscription = data;
+    };
+
+    initAuth();
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [token]);
+
+  // JSXの返却など...
+};
 
   initAuth(); // 実行
 
