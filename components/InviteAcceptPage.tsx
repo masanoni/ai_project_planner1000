@@ -9,26 +9,25 @@ import AuthModal from './AuthModal';
 const InviteAcceptPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; error?: string; project?: any } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // 1回だけ定義する
+  // handleJoinProject はここだけに1回だけ定義する
   const handleJoinProject = async () => {
     if (!token) {
       setResult({ success: false, error: '無効な招待リンクです' });
       return;
     }
+
     setIsLoading(true);
     try {
       const joinResult = await ProjectService.joinProjectByInvitation(token);
       setResult(joinResult);
-
       if (joinResult.success && joinResult.project) {
-        setTimeout(() => {
-          navigate('/');
-        }, 3000);
+        setTimeout(() => navigate('/'), 3000);
       }
     } catch (err) {
       setResult({
@@ -40,35 +39,39 @@ const InviteAcceptPage: React.FC = () => {
     }
   };
 
- useEffect(() => {
-  let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
+  useEffect(() => {
+    let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
 
-  const initAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const currentUser = session?.user ?? null;
-    setUser(currentUser);
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
 
-    if (currentUser && token && !result) {
-      await handleJoinProject();
-    }
-
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user && token && !result) {
-        handleJoinProject();
+      if (currentUser && token && !result) {
+        await handleJoinProject();
       }
-    });
 
-    subscription = data;
-  };
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+      });
 
-  initAuth();
+      subscription = data;
+    };
 
-  // ここは1つの return で閉じる（useEffectのクリーンアップ）
-  return () => {
-    subscription?.unsubscribe();
-  };
-}, [token]);
+    initAuth();
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [token]);
+
+  // --- 以下、JSXなどのコード ---
+
+  return (
+    // JSX省略
+  );
+};
+
 
 // ここで handleJoinProject は useEffect の外に書く
 const handleJoinProject = async () => {
