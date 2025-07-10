@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ProjectTask, EditableExtendedTaskDetails, SubStep, ActionItem, NumericalTarget, NumericalTargetStatus, SubStepStatus, SlideDeck, Attachment, Decision } from '../types';
-import { XIcon, SubtaskIcon, NotesIcon, ResourcesIcon, ResponsibleIcon, PlusCircleIcon, TrashIcon, CheckSquareIcon, SquareIcon, PaperClipIcon, SparklesIcon, PresentationChartBarIcon, ClipboardDocumentListIcon, LightBulbIcon, CalendarIcon, GaugeIcon, RefreshIcon } from './icons';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { ProjectTask, SubStep, ActionItem, EditableExtendedTaskDetails, SubStepStatus, NumericalTargetStatus, Decision, Attachment } from '../types';
+import { XIcon, PlusCircleIcon, TrashIcon, SubtaskIcon, NotesIcon, ResourcesIcon, ResponsibleIcon, CalendarIcon, GaugeIcon, SparklesIcon, ClipboardDocumentListIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, PaperClipIcon, LockClosedIcon, LockOpenIcon } from './icons';
 import { generateStepProposals, generateInitialSlideDeck } from '../services/geminiService';
 import ProposalReviewModal from './ProposalReviewModal';
-import SlideEditorView from './SlideEditorView';
 import ActionItemReportModal from './ActionItemReportModal';
 import ActionItemTableModal from './ActionItemTableModal';
-import CustomTaskReportModal from './CustomTaskReportModal';
+import SlideEditorView from './SlideEditorView';
 import DecisionModal from './DecisionModal';
+import CustomTaskReportModal from './CustomTaskReportModal';
 import LoadingSpinner from './LoadingSpinner';
-import ErrorMessage from './ErrorMessage';
+import FlowConnector from './FlowConnector';
 
 interface TaskDetailModalProps {
   task: ProjectTask;
@@ -19,6 +19,14 @@ interface TaskDetailModalProps {
   projectGoal: string;
   targetDate: string;
   canEdit?: boolean;
+}
+
+interface ConnectorInfo {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  sourceId: string;
+  targetId: string;
 }
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ 
@@ -31,121 +39,268 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   canEdit = true 
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'substeps' | 'details'>('info');
-  const [extendedDetails, setExtendedDetails] = useState<EditableExtendedTaskDetails>(() => ({
-    subSteps: task.extendedDetails?.subSteps || [],
-    resources: task.extendedDetails?.resources || '',
-    responsible: task.extendedDetails?.responsible || '',
-    notes: task.extendedDetails?.notes || '',
-    numericalTarget: task.extendedDetails?.numericalTarget,
-    dueDate: task.extendedDetails?.dueDate || '',
-    reportDeck: task.extendedDetails?.reportDeck,
-    resourceMatrix: task.extendedDetails?.resourceMatrix || null,
-    attachments: task.extendedDetails?.attachments || [],
-    decisions: task.extendedDetails?.decisions || [],
-    subStepCanvasSize: task.extendedDetails?.subStepCanvasSize || { width: 1200, height: 800 },
-  }));
+  const [maximizedPanel, setMaximizedPanel] = useState<'info' | 'substeps' | 'details' | null>(null);
+  const [selectedSubStep, setSelectedSubStep] = useState<SubStep | null>(null);
+  
+  // Existing state variables
+  const [extendedDetails, setExtendedDetails] = useState<EditableExtendedTaskDetails>(
+    task.extendedDetails || {
+      subSteps: [],
+      resources: '',
+      responsible: '',
+      notes: '',
+      attachments: [],
+      decisions: [],
+      subStepCanvasSize: { width: 1200, height: 800 }
+    }
+  );
 
+  // Modal states
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
-  const [isReportEditorOpen, setIsReportEditorOpen] = useState(false);
-  const [isCustomReportModalOpen, setIsCustomReportModalOpen] = useState(false);
+  const [isActionItemReportModalOpen, setIsActionItemReportModalOpen] = useState(false);
+  const [isActionItemTableModalOpen, setIsActionItemTableModalOpen] = useState(false);
+  const [isSlideEditorOpen, setIsSlideEditorOpen] = useState(false);
   const [isDecisionModalOpen, setIsDecisionModalOpen] = useState(false);
+  const [isCustomReportModalOpen, setIsCustomReportModalOpen] = useState(false);
+  
+  // Loading and error states
   const [isGeneratingProposals, setIsGeneratingProposals] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [proposalError, setProposalError] = useState<string | null>(null);
-  const [reportError, setReportError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Other states
   const [proposals, setProposals] = useState<{ title: string; description: string; }[]>([]);
-  const [selectedActionItem, setSelectedActionItem] = useState<{ actionItem: ActionItem; subStepId: string } | null>(null);
-  const [actionItemTableData, setActionItemTableData] = useState<{ items: { actionItem: ActionItem; subStep: SubStep }[]; taskName: string } | null>(null);
+  const [selectedActionItem, setSelectedActionItem] = useState<ActionItem | null>(null);
+  const [selectedActionItems, setSelectedActionItems] = useState<{ actionItem: ActionItem; subStep: SubStep }[]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const subStepCanvasRef = useRef<HTMLDivElement>(null);
-
-  // Connection state for sub-steps
+  // SubStep flow states
+  const flowContainerRef = useRef<HTMLDivElement>(null);
+  const [subStepCardRefs, setSubStepCardRefs] = useState<Map<string, React.RefObject<HTMLDivElement>>>(new Map());
+  const [connectors, setConnectors] = useState<ConnectorInfo[]>([]);
   const [connectingState, setConnectingState] = useState<{ fromId: string; fromPos: { x: number; y: number } } | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const draggedSubStepIdRef = useRef<string | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Auto-save when extendedDetails changes
+  // File input refs
+  const taskFileInputRef = useRef<HTMLInputElement>(null);
+  const subStepFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize subStep card refs
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      onUpdateTask(task.id, extendedDetails);
-    }, 500); // 500ms delay for auto-save
+    const newRefs = new Map<string, React.RefObject<HTMLDivElement>>();
+    extendedDetails.subSteps.forEach(subStep => {
+      newRefs.set(subStep.id, subStepCardRefs.get(subStep.id) || React.createRef<HTMLDivElement>());
+    });
+    setSubStepCardRefs(newRefs);
+  }, [extendedDetails.subSteps]);
 
-    return () => clearTimeout(timeoutId);
-  }, [extendedDetails, task.id, onUpdateTask]);
+  // Calculate connectors for SubStep flow
+  const calculateConnectors = useCallback(() => {
+    if (!flowContainerRef.current || subStepCardRefs.size === 0) {
+      setConnectors([]);
+      return;
+    }
 
-  const updateExtendedDetails = useCallback((updates: Partial<EditableExtendedTaskDetails>) => {
-    setExtendedDetails(prev => ({ ...prev, ...updates }));
-  }, []);
+    const newConnectors: ConnectorInfo[] = [];
+    const CARD_WIDTH = 200;
+    const CARD_HEIGHT = 120;
 
+    extendedDetails.subSteps.forEach((sourceSubStep) => {
+      if (sourceSubStep.nextSubStepIds && sourceSubStep.nextSubStepIds.length > 0) {
+        const sourceX = sourceSubStep.position?.x || 0;
+        const sourceY = sourceSubStep.position?.y || 0;
+        
+        const sourcePos = {
+          x: sourceX + CARD_WIDTH,
+          y: sourceY + CARD_HEIGHT / 2,
+        };
+
+        sourceSubStep.nextSubStepIds.forEach(targetId => {
+          const targetSubStep = extendedDetails.subSteps.find(ss => ss.id === targetId);
+          if (!targetSubStep) return;
+          
+          const targetX = targetSubStep.position?.x || 0;
+          const targetY = targetSubStep.position?.y || 0;
+
+          const targetPos = {
+            x: targetX,
+            y: targetY + CARD_HEIGHT / 2,
+          };
+          
+          newConnectors.push({
+            id: `conn-${sourceSubStep.id}-${targetId}`,
+            from: sourcePos,
+            to: targetPos,
+            sourceId: sourceSubStep.id,
+            targetId: targetId,
+          });
+        });
+      }
+    });
+    setConnectors(newConnectors);
+  }, [extendedDetails.subSteps, subStepCardRefs]);
+
+  useEffect(() => {
+    const timer = setTimeout(calculateConnectors, 50);
+    return () => clearTimeout(timer);
+  }, [calculateConnectors]);
+
+  // SubStep flow interaction handlers
+  const handleSubStepDragStart = (event: React.DragEvent<HTMLDivElement>, subStepId: string) => {
+    if (!canEdit) return;
+    draggedSubStepIdRef.current = subStepId;
+    const subStep = extendedDetails.subSteps.find(ss => ss.id === subStepId);
+    if (flowContainerRef.current) {
+      const containerRect = flowContainerRef.current.getBoundingClientRect();
+      dragOffsetRef.current.x = event.clientX - containerRect.left - (subStep?.position?.x || 0);
+      dragOffsetRef.current.y = event.clientY - containerRect.top - (subStep?.position?.y || 0);
+    }
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleSubStepDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleSubStepDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!draggedSubStepIdRef.current || !flowContainerRef.current || !canEdit) return;
+
+    const containerRect = flowContainerRef.current.getBoundingClientRect();
+    const CARD_WIDTH = 200;
+    const CARD_HEIGHT = 120;
+
+    let newX = event.clientX - containerRect.left - dragOffsetRef.current.x;
+    let newY = event.clientY - containerRect.top - dragOffsetRef.current.y;
+
+    const canvasSize = extendedDetails.subStepCanvasSize || { width: 1200, height: 800 };
+    newX = Math.max(0, Math.min(newX, canvasSize.width - CARD_WIDTH));
+    newY = Math.max(0, Math.min(newY, canvasSize.height - CARD_HEIGHT));
+
+    const updatedSubSteps = extendedDetails.subSteps.map(ss =>
+      ss.id === draggedSubStepIdRef.current
+        ? { ...ss, position: { x: newX, y: newY } }
+        : ss
+    );
+
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
+    draggedSubStepIdRef.current = null;
+    setTimeout(calculateConnectors, 0);
+  };
+
+  const handleStartConnection = (subStepId: string, event: React.MouseEvent<HTMLDivElement>) => {
+    if (!canEdit || !flowContainerRef.current) return;
+    const containerRect = flowContainerRef.current.getBoundingClientRect();
+    const fromPos = {
+      x: event.clientX - containerRect.left + flowContainerRef.current.scrollLeft,
+      y: event.clientY - containerRect.top + flowContainerRef.current.scrollTop,
+    };
+    setConnectingState({ fromId: subStepId, fromPos });
+  };
+
+  const handleEndConnection = (targetSubStepId: string) => {
+    if (!connectingState || connectingState.fromId === targetSubStepId || !canEdit) {
+      setConnectingState(null);
+      return;
+    }
+    
+    const updatedSubSteps = extendedDetails.subSteps.map(ss => {
+      if (ss.id === connectingState.fromId) {
+        const newNextSubStepIds = Array.from(new Set([...(ss.nextSubStepIds || []), targetSubStepId]));
+        return { ...ss, nextSubStepIds: newNextSubStepIds };
+      }
+      return ss;
+    });
+
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
+    setConnectingState(null);
+  };
+
+  const handleDeleteConnection = (sourceSubStepId: string, targetSubStepId: string) => {
+    if (!canEdit) return;
+    const updatedSubSteps = extendedDetails.subSteps.map(ss => {
+      if (ss.id === sourceSubStepId) {
+        const newNextSubStepIds = (ss.nextSubStepIds || []).filter(id => id !== targetSubStepId);
+        return { ...ss, nextSubStepIds: newNextSubStepIds };
+      }
+      return ss;
+    });
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
+  };
+
+  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!connectingState || !flowContainerRef.current) return;
+    const containerRect = flowContainerRef.current.getBoundingClientRect();
+    setMousePos({
+      x: event.clientX - containerRect.left + flowContainerRef.current.scrollLeft,
+      y: event.clientY - containerRect.top + flowContainerRef.current.scrollTop,
+    });
+  };
+
+  const handleMouseUp = () => {
+    if (connectingState) {
+      setConnectingState(null);
+    }
+  };
+
+  // Save changes
+  const saveChanges = useCallback(() => {
+    onUpdateTask(task.id, extendedDetails);
+  }, [task.id, extendedDetails, onUpdateTask]);
+
+  useEffect(() => {
+    saveChanges();
+  }, [saveChanges]);
+
+  // Existing handler functions (keeping all the original functionality)
   const handleGenerateProposals = async () => {
+    if (!canEdit) return;
     setIsGeneratingProposals(true);
-    setProposalError(null);
+    setError(null);
     try {
       const generatedProposals = await generateStepProposals(task);
       setProposals(generatedProposals);
       setIsProposalModalOpen(true);
     } catch (err) {
-      setProposalError(err instanceof Error ? err.message : 'ステップ提案の生成に失敗しました。');
+      setError(err instanceof Error ? err.message : 'ステップ提案の生成に失敗しました。');
     } finally {
       setIsGeneratingProposals(false);
     }
   };
 
-  const handleProposalConfirm = (additions: { newSubSteps: { title: string; description: string; }[], newActionItems: { targetSubStepId: string, title: string }[] }) => {
-    const newSubSteps: SubStep[] = additions.newSubSteps.map((proposal, index) => ({
-      id: generateUniqueId('substep'),
-      text: proposal.title,
-      notes: proposal.description,
-      position: { 
-        x: 50 + (extendedDetails.subSteps.length + index) * 250, 
-        y: 50 + Math.floor((extendedDetails.subSteps.length + index) / 4) * 200 
-      },
-      actionItems: [],
-    }));
-
-    const updatedSubSteps = [...extendedDetails.subSteps, ...newSubSteps].map(subStep => {
-      const newActionItemsForThisSubStep = additions.newActionItems.filter(item => item.targetSubStepId === subStep.id);
-      if (newActionItemsForThisSubStep.length > 0) {
-        const newActionItems: ActionItem[] = newActionItemsForThisSubStep.map(item => ({
-          id: generateUniqueId('action'),
-          text: item.title,
-          completed: false,
-        }));
-        return { ...subStep, actionItems: [...(subStep.actionItems || []), ...newActionItems] };
-      }
-      return subStep;
+  const handleConfirmProposals = (additions: { newSubSteps: { title: string; description: string; }[], newActionItems: { targetSubStepId: string, title: string }[] }) => {
+    const updatedSubSteps = [...extendedDetails.subSteps];
+    
+    additions.newSubSteps.forEach((proposal, index) => {
+      const newSubStep: SubStep = {
+        id: generateUniqueId('substep'),
+        text: proposal.title,
+        notes: proposal.description,
+        position: {
+          x: 50 + (updatedSubSteps.length + index) * 220,
+          y: 50
+        },
+        actionItems: []
+      };
+      updatedSubSteps.push(newSubStep);
     });
 
-    updateExtendedDetails({ subSteps: updatedSubSteps });
+    additions.newActionItems.forEach(item => {
+      const targetIndex = updatedSubSteps.findIndex(ss => ss.id === item.targetSubStepId);
+      if (targetIndex !== -1) {
+        const newActionItem: ActionItem = {
+          id: generateUniqueId('action'),
+          text: item.title,
+          completed: false
+        };
+        updatedSubSteps[targetIndex].actionItems = [...(updatedSubSteps[targetIndex].actionItems || []), newActionItem];
+      }
+    });
+
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
     setIsProposalModalOpen(false);
-  };
-
-  const handleGenerateReport = async () => {
-    if (extendedDetails.reportDeck) {
-      setIsReportEditorOpen(true);
-      return;
-    }
-    setIsGeneratingReport(true);
-    setReportError(null);
-    try {
-      const deck = await generateInitialSlideDeck(task, projectGoal);
-      updateExtendedDetails({ reportDeck: deck });
-      setIsReportEditorOpen(true);
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : 'レポートの生成に失敗しました。');
-    } finally {
-      setIsGeneratingReport(false);
-    }
-  };
-
-  const handleReportSave = (deck: SlideDeck) => {
-    updateExtendedDetails({ reportDeck: deck });
-  };
-
-  const handleCustomReportGenerated = (deck: SlideDeck) => {
-    updateExtendedDetails({ reportDeck: deck });
-    setIsCustomReportModalOpen(false);
-    setIsReportEditorOpen(true);
   };
 
   const handleAddSubStep = () => {
@@ -153,36 +308,41 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     const newSubStep: SubStep = {
       id: generateUniqueId('substep'),
       text: '新しいサブステップ',
-      position: { 
-        x: 50 + extendedDetails.subSteps.length * 250, 
-        y: 50 + Math.floor(extendedDetails.subSteps.length / 4) * 200 
+      notes: '',
+      position: {
+        x: 50 + extendedDetails.subSteps.length * 220,
+        y: 50
       },
-      actionItems: [],
+      actionItems: []
     };
-    updateExtendedDetails({ subSteps: [...extendedDetails.subSteps, newSubStep] });
+    setExtendedDetails(prev => ({ ...prev, subSteps: [...prev.subSteps, newSubStep] }));
   };
 
   const handleRemoveSubStep = (subStepId: string) => {
-    if (!canEdit) return;
-    if (confirm('このサブステップを削除しますか？')) {
-      updateExtendedDetails({ 
-        subSteps: extendedDetails.subSteps.filter(ss => ss.id !== subStepId) 
-      });
+    if (!canEdit || !confirm('このサブステップを削除しますか？')) return;
+    
+    const updatedSubSteps = extendedDetails.subSteps.filter(ss => ss.id !== subStepId);
+    const cleanedSubSteps = updatedSubSteps.map(ss => ({
+      ...ss,
+      nextSubStepIds: ss.nextSubStepIds?.filter(id => id !== subStepId)
+    }));
+    
+    setExtendedDetails(prev => ({ ...prev, subSteps: cleanedSubSteps }));
+    if (selectedSubStep?.id === subStepId) {
+      setSelectedSubStep(null);
     }
   };
 
   const handleUpdateSubStep = (subStepId: string, updates: Partial<SubStep>) => {
     if (!canEdit) return;
-    updateExtendedDetails({
-      subSteps: extendedDetails.subSteps.map(ss => 
-        ss.id === subStepId ? { ...ss, ...updates } : ss
-      )
-    });
-  };
-
-  const handleSubStepPositionUpdate = (subStepId: string, position: { x: number; y: number }) => {
-    if (!canEdit) return;
-    handleUpdateSubStep(subStepId, { position });
+    const updatedSubSteps = extendedDetails.subSteps.map(ss =>
+      ss.id === subStepId ? { ...ss, ...updates } : ss
+    );
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
+    
+    if (selectedSubStep?.id === subStepId) {
+      setSelectedSubStep(prev => prev ? { ...prev, ...updates } : null);
+    }
   };
 
   const handleAddActionItem = (subStepId: string) => {
@@ -190,60 +350,48 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     const newActionItem: ActionItem = {
       id: generateUniqueId('action'),
       text: '新しいアクションアイテム',
-      completed: false,
+      completed: false
     };
     
-    updateExtendedDetails({
-      subSteps: extendedDetails.subSteps.map(ss => 
-        ss.id === subStepId 
-          ? { ...ss, actionItems: [...(ss.actionItems || []), newActionItem] }
-          : ss
-      )
-    });
+    const updatedSubSteps = extendedDetails.subSteps.map(ss =>
+      ss.id === subStepId
+        ? { ...ss, actionItems: [...(ss.actionItems || []), newActionItem] }
+        : ss
+    );
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
   };
 
   const handleUpdateActionItem = (subStepId: string, actionItemId: string, updates: Partial<ActionItem>) => {
     if (!canEdit) return;
-    updateExtendedDetails({
-      subSteps: extendedDetails.subSteps.map(ss => 
-        ss.id === subStepId 
-          ? { 
-              ...ss, 
-              actionItems: (ss.actionItems || []).map(ai => 
-                ai.id === actionItemId ? { ...ai, ...updates } : ai
-              )
-            }
-          : ss
-      )
-    });
+    const updatedSubSteps = extendedDetails.subSteps.map(ss =>
+      ss.id === subStepId
+        ? {
+            ...ss,
+            actionItems: ss.actionItems?.map(ai =>
+              ai.id === actionItemId ? { ...ai, ...updates } : ai
+            )
+          }
+        : ss
+    );
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
   };
 
   const handleRemoveActionItem = (subStepId: string, actionItemId: string) => {
-    if (!canEdit) return;
-    if (confirm('このアクションアイテムを削除しますか？')) {
-      updateExtendedDetails({
-        subSteps: extendedDetails.subSteps.map(ss => 
-          ss.id === subStepId 
-            ? { ...ss, actionItems: (ss.actionItems || []).filter(ai => ai.id !== actionItemId) }
-            : ss
-        )
-      });
-    }
+    if (!canEdit || !confirm('このアクションアイテムを削除しますか？')) return;
+    
+    const updatedSubSteps = extendedDetails.subSteps.map(ss =>
+      ss.id === subStepId
+        ? { ...ss, actionItems: ss.actionItems?.filter(ai => ai.id !== actionItemId) }
+        : ss
+    );
+    setExtendedDetails(prev => ({ ...prev, subSteps: updatedSubSteps }));
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // File handling
+  const handleTaskFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!canEdit) return;
     const file = event.target.files?.[0];
     if (!file) return;
-
-    const MAX_FILE_SIZE_MB = 5;
-    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-    
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      alert(`ファイルサイズが大きすぎます。${MAX_FILE_SIZE_MB}MB未満のファイルを選択してください。`);
-      if (event.target) event.target.value = '';
-      return;
-    }
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -254,883 +402,903 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           type: file.type,
           dataUrl: e.target.result,
         };
-        updateExtendedDetails({ 
-          attachments: [...extendedDetails.attachments, newAttachment] 
-        });
-      } else {
-        alert('ファイルの読み込みに失敗しました。');
+        setExtendedDetails(prev => ({
+          ...prev,
+          attachments: [...(prev.attachments || []), newAttachment]
+        }));
       }
-    };
-    reader.onerror = () => {
-      alert('ファイルの読み込み中にエラーが発生しました。');
     };
     reader.readAsDataURL(file);
-    if (event.target) event.target.value = '';
+    event.target.value = '';
   };
 
-  const handleRemoveAttachment = (attachmentId: string) => {
-    if (!canEdit) return;
-    updateExtendedDetails({
-      attachments: extendedDetails.attachments.filter(a => a.id !== attachmentId)
-    });
-  };
+  const handleSubStepFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEdit || !selectedSubStep) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  const handleStartConnection = (subStepId: string, event: React.MouseEvent<HTMLDivElement>) => {
-    if (!canEdit) return;
-    if (!subStepCanvasRef.current) return;
-    const containerRect = subStepCanvasRef.current.getBoundingClientRect();
-    const fromPos = {
-      x: event.clientX - containerRect.left + subStepCanvasRef.current.scrollLeft,
-      y: event.clientY - containerRect.top + subStepCanvasRef.current.scrollTop,
-    };
-    setConnectingState({ fromId: subStepId, fromPos });
-  };
-
-  const handleEndConnection = (targetSubStepId: string) => {
-    if (!canEdit) return;
-    if (!connectingState || connectingState.fromId === targetSubStepId) {
-      setConnectingState(null);
-      return;
-    }
-    
-    const sourceSubStep = extendedDetails.subSteps.find(ss => ss.id === connectingState.fromId);
-    if (sourceSubStep) {
-      const newNextSubStepIds = Array.from(new Set([...(sourceSubStep.nextSubStepIds || []), targetSubStepId]));
-      handleUpdateSubStep(sourceSubStep.id, { nextSubStepIds: newNextSubStepIds });
-    }
-    setConnectingState(null);
-  };
-
-  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!connectingState || !subStepCanvasRef.current) return;
-    const containerRect = subStepCanvasRef.current.getBoundingClientRect();
-    setMousePos({
-      x: event.clientX - containerRect.left + subStepCanvasRef.current.scrollLeft,
-      y: event.clientY - containerRect.top + subStepCanvasRef.current.scrollTop,
-    });
-  };
-
-  const handleMouseUp = () => {
-    if (connectingState) {
-      setConnectingState(null);
-    }
-  };
-
-  const handleDeleteConnection = (sourceSubStepId: string, targetSubStepId: string) => {
-    if (!canEdit) return;
-    const sourceSubStep = extendedDetails.subSteps.find(ss => ss.id === sourceSubStepId);
-    if (sourceSubStep) {
-      const newNextSubStepIds = (sourceSubStep.nextSubStepIds || []).filter(id => id !== targetSubStepId);
-      handleUpdateSubStep(sourceSubStep.id, { nextSubStepIds: newNextSubStepIds });
-    }
-  };
-
-  const handleActionItemReport = (subStepId: string, actionItem: ActionItem) => {
-    setSelectedActionItem({ actionItem, subStepId });
-  };
-
-  const handleActionItemReportSave = (updatedActionItem: ActionItem) => {
-    if (selectedActionItem) {
-      handleUpdateActionItem(selectedActionItem.subStepId, updatedActionItem.id, updatedActionItem);
-      setSelectedActionItem(null);
-    }
-  };
-
-  const handleShowActionItemTable = (subStepId?: string) => {
-    if (subStepId) {
-      const subStep = extendedDetails.subSteps.find(ss => ss.id === subStepId);
-      if (subStep && subStep.actionItems) {
-        const items = subStep.actionItems.map(ai => ({ actionItem: ai, subStep }));
-        setActionItemTableData({ items, taskName: task.title });
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (typeof e.target?.result === 'string') {
+        const newAttachment: Attachment = {
+          id: generateUniqueId('attach'),
+          name: file.name,
+          type: file.type,
+          dataUrl: e.target.result,
+        };
+        handleUpdateSubStep(selectedSubStep.id, {
+          attachments: [...(selectedSubStep.attachments || []), newAttachment]
+        });
       }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
+
+  const handleRemoveTaskAttachment = (attachmentId: string) => {
+    if (!canEdit) return;
+    setExtendedDetails(prev => ({
+      ...prev,
+      attachments: prev.attachments?.filter(att => att.id !== attachmentId)
+    }));
+  };
+
+  const handleRemoveSubStepAttachment = (attachmentId: string) => {
+    if (!canEdit || !selectedSubStep) return;
+    handleUpdateSubStep(selectedSubStep.id, {
+      attachments: selectedSubStep.attachments?.filter(att => att.id !== attachmentId)
+    });
+  };
+
+  // Report generation
+  const handleGenerateReport = async () => {
+    if (!canEdit) return;
+    setIsGeneratingReport(true);
+    setError(null);
+    try {
+      const deck = await generateInitialSlideDeck(task, projectGoal);
+      setExtendedDetails(prev => ({ ...prev, reportDeck: deck }));
+      setIsSlideEditorOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'レポートの生成に失敗しました。');
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleSaveReport = (deck: any) => {
+    setExtendedDetails(prev => ({ ...prev, reportDeck: deck }));
+  };
+
+  // Action item table
+  const handleOpenActionItemTable = (subStep?: SubStep) => {
+    if (subStep) {
+      const items = (subStep.actionItems || []).map(ai => ({ actionItem: ai, subStep }));
+      setSelectedActionItems(items);
     } else {
       const allItems: { actionItem: ActionItem; subStep: SubStep }[] = [];
-      extendedDetails.subSteps.forEach(subStep => {
-        (subStep.actionItems || []).forEach(actionItem => {
-          allItems.push({ actionItem, subStep });
+      extendedDetails.subSteps.forEach(ss => {
+        (ss.actionItems || []).forEach(ai => {
+          allItems.push({ actionItem: ai, subStep: ss });
         });
       });
-      setActionItemTableData({ items: allItems, taskName: task.title });
+      setSelectedActionItems(allItems);
     }
+    setIsActionItemTableModalOpen(true);
   };
 
-  const handleDecisionsSave = (decisions: Decision[]) => {
-    updateExtendedDetails({ decisions });
+  // Decision management
+  const handleSaveDecisions = (decisions: Decision[]) => {
+    setExtendedDetails(prev => ({ ...prev, decisions }));
     setIsDecisionModalOpen(false);
   };
 
-  const handleAutoLayout = () => {
-    if (!canEdit) return;
-    const updatedSubSteps = extendedDetails.subSteps.map((subStep, index) => ({
-      ...subStep,
-      position: {
-        x: 50 + (index % 3) * 300,
-        y: 50 + Math.floor(index / 3) * 250,
-      },
-    }));
-    updateExtendedDetails({ subSteps: updatedSubSteps });
-  };
+  // Render functions
+  const renderTaskInfo = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            <ResponsibleIcon className="w-5 h-5 inline mr-2" />
+            担当者
+          </label>
+          <input
+            type="text"
+            value={extendedDetails.responsible}
+            onChange={(e) => setExtendedDetails(prev => ({ ...prev, responsible: e.target.value }))}
+            disabled={!canEdit}
+            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+            placeholder="担当者名を入力"
+          />
+        </div>
+        
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            <CalendarIcon className="w-5 h-5 inline mr-2" />
+            期日
+          </label>
+          <input
+            type="date"
+            value={extendedDetails.dueDate || ''}
+            onChange={(e) => setExtendedDetails(prev => ({ ...prev, dueDate: e.target.value }))}
+            disabled={!canEdit}
+            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+          />
+        </div>
+      </div>
 
-  const connectors = useMemo(() => {
-    const newConnectors: Array<{
-      id: string;
-      from: { x: number; y: number };
-      to: { x: number; y: number };
-      sourceId: string;
-      targetId: string;
-    }> = [];
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          <ResourcesIcon className="w-5 h-5 inline mr-2" />
+          必要なリソース
+        </label>
+        <textarea
+          value={extendedDetails.resources}
+          onChange={(e) => setExtendedDetails(prev => ({ ...prev, resources: e.target.value }))}
+          disabled={!canEdit}
+          rows={3}
+          className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+          placeholder="必要な人員、設備、予算などを記載"
+        />
+      </div>
 
-    extendedDetails.subSteps.forEach(sourceSubStep => {
-      if (sourceSubStep.nextSubStepIds && sourceSubStep.position) {
-        const sourcePos = {
-          x: sourceSubStep.position.x + 200,
-          y: sourceSubStep.position.y + 75,
-        };
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          <NotesIcon className="w-5 h-5 inline mr-2" />
+          メモ・詳細
+        </label>
+        <textarea
+          value={extendedDetails.notes}
+          onChange={(e) => setExtendedDetails(prev => ({ ...prev, notes: e.target.value }))}
+          disabled={!canEdit}
+          rows={4}
+          className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+          placeholder="追加の詳細情報やメモを記載"
+        />
+      </div>
 
-        sourceSubStep.nextSubStepIds.forEach(targetId => {
-          const targetSubStep = extendedDetails.subSteps.find(ss => ss.id === targetId);
-          if (targetSubStep && targetSubStep.position) {
-            const targetPos = {
-              x: targetSubStep.position.x,
-              y: targetSubStep.position.y + 75,
-            };
-            newConnectors.push({
-              id: `conn-${sourceSubStep.id}-${targetId}`,
-              from: sourcePos,
-              to: targetPos,
-              sourceId: sourceSubStep.id,
-              targetId: targetId,
-            });
-          }
-        });
+      {/* Numerical Target */}
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          <GaugeIcon className="w-5 h-5 inline mr-2" />
+          数値目標
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input
+            type="text"
+            value={extendedDetails.numericalTarget?.description || ''}
+            onChange={(e) => setExtendedDetails(prev => ({
+              ...prev,
+              numericalTarget: { ...prev.numericalTarget, description: e.target.value, targetValue: prev.numericalTarget?.targetValue || '', unit: prev.numericalTarget?.unit || '' }
+            }))}
+            disabled={!canEdit}
+            className="px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+            placeholder="目標の説明"
+          />
+          <input
+            type="text"
+            value={extendedDetails.numericalTarget?.targetValue || ''}
+            onChange={(e) => setExtendedDetails(prev => ({
+              ...prev,
+              numericalTarget: { ...prev.numericalTarget, description: prev.numericalTarget?.description || '', targetValue: e.target.value, unit: prev.numericalTarget?.unit || '' }
+            }))}
+            disabled={!canEdit}
+            className="px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+            placeholder="目標値"
+          />
+          <input
+            type="text"
+            value={extendedDetails.numericalTarget?.unit || ''}
+            onChange={(e) => setExtendedDetails(prev => ({
+              ...prev,
+              numericalTarget: { ...prev.numericalTarget, description: prev.numericalTarget?.description || '', targetValue: prev.numericalTarget?.targetValue || '', unit: e.target.value }
+            }))}
+            disabled={!canEdit}
+            className="px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+            placeholder="単位"
+          />
+        </div>
+      </div>
+
+      {/* Attachments */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-semibold text-slate-700">
+            <PaperClipIcon className="w-5 h-5 inline mr-2" />
+            添付ファイル
+          </label>
+          {canEdit && (
+            <button
+              onClick={() => taskFileInputRef.current?.click()}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              ファイルを追加
+            </button>
+          )}
+        </div>
+        <input
+          type="file"
+          ref={taskFileInputRef}
+          onChange={handleTaskFileChange}
+          className="hidden"
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {(extendedDetails.attachments || []).map(attachment => (
+            <div key={attachment.id} className="relative group border rounded-md overflow-hidden bg-white shadow-sm">
+              <a href={attachment.dataUrl} download={attachment.name} className="block">
+                {attachment.type.startsWith('image/') ? (
+                  <img src={attachment.dataUrl} alt={attachment.name} className="w-full h-20 object-cover" />
+                ) : (
+                  <div className="w-full h-20 bg-slate-100 flex items-center justify-center">
+                    <PaperClipIcon className="w-8 h-8 text-slate-500" />
+                  </div>
+                )}
+              </a>
+              <div className="p-1">
+                <p className="text-xs truncate" title={attachment.name}>{attachment.name}</p>
+              </div>
+              {canEdit && (
+                <button
+                  onClick={() => handleRemoveTaskAttachment(attachment.id)}
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <TrashIcon className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-3">
+        {canEdit && (
+          <>
+            <button
+              onClick={() => setIsDecisionModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+            >
+              <ClipboardDocumentListIcon className="w-5 h-5" />
+              決定事項管理
+            </button>
+            <button
+              onClick={handleGenerateReport}
+              disabled={isGeneratingReport}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-slate-400"
+            >
+              {isGeneratingReport ? <LoadingSpinner size="sm" color="border-white" /> : <SparklesIcon className="w-5 h-5" />}
+              AIレポート生成
+            </button>
+            <button
+              onClick={() => setIsCustomReportModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+            >
+              <SparklesIcon className="w-5 h-5" />
+              カスタムレポート
+            </button>
+          </>
+        )}
+        <button
+          onClick={() => handleOpenActionItemTable()}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          <ClipboardDocumentListIcon className="w-5 h-5" />
+          全アクションアイテム
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderSubStepCard = (subStep: SubStep) => {
+    const getStatusColor = (status?: SubStepStatus) => {
+      switch(status) {
+        case SubStepStatus.COMPLETED: return 'border-green-500 bg-green-50';
+        case SubStepStatus.IN_PROGRESS: return 'border-blue-500 bg-blue-50';
+        default: return 'border-slate-300 bg-white';
       }
-    });
+    };
 
-    return newConnectors;
-  }, [extendedDetails.subSteps]);
-
-  const getStatusColor = (status?: SubStepStatus) => {
-    switch(status) {
-      case SubStepStatus.COMPLETED: return 'border-green-500';
-      case SubStepStatus.IN_PROGRESS: return 'border-blue-500';
-      default: return 'border-slate-300';
-    }
+    return (
+      <div
+        key={subStep.id}
+        ref={subStepCardRefs.get(subStep.id)}
+        draggable={canEdit}
+        onDragStart={(e) => handleSubStepDragStart(e, subStep.id)}
+        onMouseUp={() => handleEndConnection(subStep.id)}
+        onClick={() => setSelectedSubStep(subStep)}
+        className={`absolute w-48 min-h-[120px] p-3 border-2 rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-all ${getStatusColor(subStep.status)} ${selectedSubStep?.id === subStep.id ? 'ring-2 ring-blue-500' : ''}`}
+        style={{
+          left: subStep.position?.x || 0,
+          top: subStep.position?.y || 0,
+        }}
+      >
+        {canEdit && (
+          <div
+            onMouseDown={(e) => handleStartConnection(subStep.id, e)}
+            className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-125 transition-transform z-10"
+            title="ドラッグして接続"
+          />
+        )}
+        
+        <div className="flex items-start justify-between mb-2">
+          <h4 className="font-semibold text-sm text-slate-800 flex-grow pr-2">{subStep.text}</h4>
+          {canEdit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemoveSubStep(subStep.id);
+              }}
+              className="text-red-500 hover:text-red-700 p-1"
+            >
+              <TrashIcon className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        
+        <div className="text-xs text-slate-600 mb-2">
+          {subStep.actionItems?.length || 0} アクション
+        </div>
+        
+        {subStep.status && (
+          <div className="text-xs font-medium">
+            {subStep.status}
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const getStatusBadge = (status?: SubStepStatus) => {
-    switch(status) {
-      case SubStepStatus.COMPLETED: 
-        return <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">完了</span>;
-      case SubStepStatus.IN_PROGRESS: 
-        return <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">進行中</span>;
-      default: 
-        return <span className="px-2 py-1 text-xs bg-slate-100 text-slate-800 rounded-full">未着手</span>;
-    }
+  const renderSubSteps = () => (
+    <div className="h-full flex">
+      {/* SubStep Flow Canvas */}
+      <div className="flex-1 border-r border-slate-200">
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-800">サブステップ計画</h3>
+            {canEdit && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleGenerateProposals}
+                  disabled={isGeneratingProposals}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-slate-400"
+                >
+                  {isGeneratingProposals ? <LoadingSpinner size="sm" color="border-white" /> : <SparklesIcon className="w-4 h-4" />}
+                  AI提案
+                </button>
+                <button
+                  onClick={handleAddSubStep}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  <PlusCircleIcon className="w-4 h-4" />
+                  追加
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div
+          ref={flowContainerRef}
+          className="relative overflow-auto h-[calc(100%-80px)] bg-slate-50"
+          onDragOver={handleSubStepDragOver}
+          onDrop={handleSubStepDrop}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          style={{
+            width: '100%',
+            height: extendedDetails.subStepCanvasSize?.height || 800,
+          }}
+        >
+          <div
+            className="relative"
+            style={{
+              width: extendedDetails.subStepCanvasSize?.width || 1200,
+              height: extendedDetails.subStepCanvasSize?.height || 800,
+            }}
+          >
+            {extendedDetails.subSteps.map(renderSubStepCard)}
+            
+            {/* Connectors */}
+            {connectors.map(conn => (
+              <FlowConnector
+                key={conn.id}
+                from={conn.from}
+                to={conn.to}
+                id={conn.id}
+                onDelete={canEdit ? () => handleDeleteConnection(conn.sourceId, conn.targetId) : undefined}
+              />
+            ))}
+            
+            {/* Preview connector */}
+            {connectingState && (
+              <FlowConnector
+                from={connectingState.fromPos}
+                to={mousePos}
+                id="preview-connector"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* SubStep Details Panel */}
+      <div className="w-96 bg-white">
+        {selectedSubStep ? (
+          <div className="h-full flex flex-col">
+            <div className="p-4 border-b border-slate-200 bg-slate-50">
+              <h3 className="text-lg font-semibold text-slate-800">サブステップの詳細</h3>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">タイトル</label>
+                <input
+                  type="text"
+                  value={selectedSubStep.text}
+                  onChange={(e) => handleUpdateSubStep(selectedSubStep.id, { text: e.target.value })}
+                  disabled={!canEdit}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">ステータス</label>
+                <select
+                  value={selectedSubStep.status || SubStepStatus.NOT_STARTED}
+                  onChange={(e) => handleUpdateSubStep(selectedSubStep.id, { status: e.target.value as SubStepStatus })}
+                  disabled={!canEdit}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                >
+                  <option value={SubStepStatus.NOT_STARTED}>未着手</option>
+                  <option value={SubStepStatus.IN_PROGRESS}>進行中</option>
+                  <option value={SubStepStatus.COMPLETED}>完了</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">担当者</label>
+                <input
+                  type="text"
+                  value={selectedSubStep.responsible || ''}
+                  onChange={(e) => handleUpdateSubStep(selectedSubStep.id, { responsible: e.target.value })}
+                  disabled={!canEdit}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">期日</label>
+                <input
+                  type="date"
+                  value={selectedSubStep.dueDate || ''}
+                  onChange={(e) => handleUpdateSubStep(selectedSubStep.id, { dueDate: e.target.value })}
+                  disabled={!canEdit}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">メモ</label>
+                <textarea
+                  value={selectedSubStep.notes || ''}
+                  onChange={(e) => handleUpdateSubStep(selectedSubStep.id, { notes: e.target.value })}
+                  disabled={!canEdit}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                />
+              </div>
+
+              {/* SubStep Attachments */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-slate-700">添付ファイル</label>
+                  {canEdit && (
+                    <button
+                      onClick={() => subStepFileInputRef.current?.click()}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      追加
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  ref={subStepFileInputRef}
+                  onChange={handleSubStepFileChange}
+                  className="hidden"
+                />
+                <div className="space-y-2">
+                  {(selectedSubStep.attachments || []).map(attachment => (
+                    <div key={attachment.id} className="flex items-center justify-between p-2 border rounded-md">
+                      <a href={attachment.dataUrl} download={attachment.name} className="text-sm text-blue-600 hover:underline truncate">
+                        {attachment.name}
+                      </a>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleRemoveSubStepAttachment(attachment.id)}
+                          className="text-red-500 hover:text-red-700 ml-2"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Items */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-slate-700">アクションアイテム</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleOpenActionItemTable(selectedSubStep)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      一覧表示
+                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => handleAddActionItem(selectedSubStep.id)}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        追加
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {(selectedSubStep.actionItems || []).map(actionItem => (
+                    <div key={actionItem.id} className="p-2 border rounded-md">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-2 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={actionItem.completed}
+                            onChange={(e) => handleUpdateActionItem(selectedSubStep.id, actionItem.id, { 
+                              completed: e.target.checked,
+                              completedDate: e.target.checked ? new Date().toISOString().split('T')[0] : undefined
+                            })}
+                            disabled={!canEdit}
+                            className="mt-1"
+                          />
+                          <input
+                            type="text"
+                            value={actionItem.text}
+                            onChange={(e) => handleUpdateActionItem(selectedSubStep.id, actionItem.id, { text: e.target.value })}
+                            disabled={!canEdit}
+                            className="flex-1 text-sm border-none outline-none bg-transparent"
+                          />
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => {
+                              setSelectedActionItem(actionItem);
+                              setIsActionItemReportModalOpen(true);
+                            }}
+                            className="text-blue-500 hover:text-blue-700 p-1"
+                            title="レポート"
+                          >
+                            <NotesIcon className="w-4 h-4" />
+                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => handleRemoveActionItem(selectedSubStep.id, actionItem.id)}
+                              className="text-red-500 hover:text-red-700 p-1"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {actionItem.responsible && (
+                        <div className="text-xs text-slate-500 mt-1">担当: {actionItem.responsible}</div>
+                      )}
+                      {actionItem.dueDate && (
+                        <div className="text-xs text-slate-500">期日: {actionItem.dueDate}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-slate-500">
+            <div className="text-center">
+              <SubtaskIcon className="w-12 h-12 mx-auto mb-2 text-slate-400" />
+              <p>サブステップを選択してください</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDetails = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">決定事項</h3>
+        <div className="space-y-2">
+          {(extendedDetails.decisions || []).slice(0, 5).map(decision => (
+            <div key={decision.id} className="p-3 border rounded-md">
+              <div className="flex items-center justify-between">
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  decision.status === 'decided' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {decision.status === 'decided' ? '決定済み' : '未決定'}
+                </span>
+                {decision.date && <span className="text-xs text-slate-500">{decision.date}</span>}
+              </div>
+              <p className="font-medium text-slate-800 mt-1">{decision.question}</p>
+              {decision.decision && <p className="text-sm text-slate-600 mt-1">{decision.decision}</p>}
+            </div>
+          ))}
+          {(extendedDetails.decisions || []).length > 5 && (
+            <p className="text-sm text-slate-500">他 {(extendedDetails.decisions || []).length - 5} 件...</p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">進捗サマリー</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-blue-50 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600">{extendedDetails.subSteps.length}</div>
+            <div className="text-sm text-blue-800">サブステップ</div>
+          </div>
+          <div className="p-4 bg-green-50 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">
+              {extendedDetails.subSteps.filter(ss => ss.status === SubStepStatus.COMPLETED).length}
+            </div>
+            <div className="text-sm text-green-800">完了済み</div>
+          </div>
+          <div className="p-4 bg-yellow-50 rounded-lg">
+            <div className="text-2xl font-bold text-yellow-600">
+              {extendedDetails.subSteps.reduce((total, ss) => total + (ss.actionItems?.length || 0), 0)}
+            </div>
+            <div className="text-sm text-yellow-800">アクションアイテム</div>
+          </div>
+        </div>
+      </div>
+
+      {extendedDetails.reportDeck && (
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">生成済みレポート</h3>
+          <div className="p-4 border rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">タスクレポート</p>
+                <p className="text-sm text-slate-500">{extendedDetails.reportDeck.slides.length} スライド</p>
+              </div>
+              <button
+                onClick={() => setIsSlideEditorOpen(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                レポートを開く
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const getPanelClass = (panelName: 'info' | 'substeps' | 'details') => {
+    if (maximizedPanel === panelName) return 'col-span-3';
+    if (maximizedPanel && maximizedPanel !== panelName) return 'hidden';
+    return 'col-span-1';
   };
 
-  const completedActionItems = extendedDetails.subSteps.reduce((total, ss) => 
-    total + (ss.actionItems?.filter(ai => ai.completed).length || 0), 0
-  );
-  const totalActionItems = extendedDetails.subSteps.reduce((total, ss) => 
-    total + (ss.actionItems?.length || 0), 0
-  );
-
-  if (isReportEditorOpen && extendedDetails.reportDeck) {
+  if (isSlideEditorOpen && extendedDetails.reportDeck) {
     return (
       <SlideEditorView
         tasks={[task]}
         initialDeck={extendedDetails.reportDeck}
-        onSave={handleReportSave}
-        onClose={() => setIsReportEditorOpen(false)}
-        generateUniqueId={generateUniqueId}
+        onSave={handleSaveReport}
+        onClose={() => setIsSlideEditorOpen(false)}
         projectGoal={projectGoal}
         targetDate={targetDate}
         reportScope="task"
+        generateUniqueId={generateUniqueId}
       />
     );
   }
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center p-4 z-[50]">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-7xl h-[90vh] flex flex-col">
-          <header className="flex items-center justify-between p-6 border-b border-slate-200 flex-shrink-0">
-            <div className="flex-grow min-w-0 mr-4">
-              <h3 className="text-2xl font-bold text-slate-800 break-words">{task.title}</h3>
-              <p className="text-slate-600 mt-1 break-words">{task.description}</p>
+      <div className="fixed inset-0 bg-slate-100 z-[50] flex flex-col">
+        {/* Header */}
+        <div className="bg-white border-b border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-slate-800">{task.title}</h2>
+              <p className="text-slate-600 mt-1">{task.description}</p>
             </div>
-            <div className="flex items-center space-x-2 flex-shrink-0">
-              <button
-                onClick={() => setIsDecisionModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-purple-600 rounded-md hover:bg-purple-700"
-                title="決定事項を管理"
-              >
-                <LightBulbIcon className="w-4 h-4" />
-                決定事項 ({extendedDetails.decisions.length})
-              </button>
-              <button
-                onClick={() => handleShowActionItemTable()}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300"
-                title="全アクションアイテムを表示"
-              >
-                <ClipboardDocumentListIcon className="w-4 h-4" />
-                アクション一覧 ({completedActionItems}/{totalActionItems})
-              </button>
-              <button
-                onClick={() => setIsCustomReportModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700"
-                title="カスタムレポートを作成"
-              >
-                <SparklesIcon className="w-4 h-4" />
-                カスタムレポート
-              </button>
-              <button
-                onClick={handleGenerateReport}
-                disabled={isGeneratingReport}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:bg-slate-400"
-                title="タスクレポートを生成"
-              >
-                {isGeneratingReport ? <LoadingSpinner size="sm" color="border-white" /> : <PresentationChartBarIcon className="w-4 h-4" />}
-                タスクレポート
-              </button>
-              <button
-                onClick={onClose}
-                className="text-slate-500 hover:text-slate-700 transition-colors p-2 rounded-full hover:bg-slate-100"
-                title="閉じる"
-              >
-                <XIcon className="w-6 h-6" />
-              </button>
-            </div>
-          </header>
-
-          {/* Tab Navigation */}
-          <div className="flex border-b border-slate-200 bg-slate-50">
             <button
-              onClick={() => setActiveTab('info')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'info' 
-                  ? 'border-blue-500 text-blue-600 bg-white' 
-                  : 'border-transparent text-slate-600 hover:text-slate-800'
-              }`}
+              onClick={onClose}
+              className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-full"
             >
-              タスク情報
+              <XIcon className="w-6 h-6" />
             </button>
-            <button
-              onClick={() => setActiveTab('substeps')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'substeps' 
-                  ? 'border-blue-500 text-blue-600 bg-white' 
-                  : 'border-transparent text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              サブステップ計画 ({extendedDetails.subSteps.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('details')}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'details' 
-                  ? 'border-blue-500 text-blue-600 bg-white' 
-                  : 'border-transparent text-slate-600 hover:text-slate-800'
-              }`}
-            >
-              サブステップの詳細
-            </button>
-          </div>
-
-          <div className="flex-grow overflow-hidden">
-            {/* タスク情報タブ */}
-            {activeTab === 'info' && (
-              <div className="p-6 overflow-y-auto h-full">
-                <div className="max-w-2xl mx-auto space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                        <ResponsibleIcon className="w-4 h-4 mr-2" />
-                        担当者
-                      </label>
-                      <input
-                        type="text"
-                        value={extendedDetails.responsible}
-                        onChange={(e) => updateExtendedDetails({ responsible: e.target.value })}
-                        disabled={!canEdit}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="担当者名"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                        <CalendarIcon className="w-4 h-4 mr-2" />
-                        期日
-                      </label>
-                      <input
-                        type="date"
-                        value={extendedDetails.dueDate}
-                        onChange={(e) => updateExtendedDetails({ dueDate: e.target.value })}
-                        disabled={!canEdit}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                      <ResourcesIcon className="w-4 h-4 mr-2" />
-                      必要なリソース
-                    </label>
-                    <textarea
-                      value={extendedDetails.resources}
-                      onChange={(e) => updateExtendedDetails({ resources: e.target.value })}
-                      disabled={!canEdit}
-                      rows={4}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="必要な人員、設備、予算など"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                      <NotesIcon className="w-4 h-4 mr-2" />
-                      メモ・備考
-                    </label>
-                    <textarea
-                      value={extendedDetails.notes}
-                      onChange={(e) => updateExtendedDetails({ notes: e.target.value })}
-                      disabled={!canEdit}
-                      rows={6}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="追加の情報や注意事項"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
-                      <GaugeIcon className="w-4 h-4 mr-2" />
-                      数値目標
-                    </label>
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={extendedDetails.numericalTarget?.description || ''}
-                        onChange={(e) => updateExtendedDetails({ 
-                          numericalTarget: { 
-                            ...extendedDetails.numericalTarget, 
-                            description: e.target.value,
-                            targetValue: extendedDetails.numericalTarget?.targetValue || '',
-                            unit: extendedDetails.numericalTarget?.unit || '',
-                          } as NumericalTarget
-                        })}
-                        disabled={!canEdit}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="目標の説明"
-                      />
-                      <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="text"
-                          value={extendedDetails.numericalTarget?.targetValue || ''}
-                          onChange={(e) => updateExtendedDetails({ 
-                            numericalTarget: { 
-                              ...extendedDetails.numericalTarget, 
-                              targetValue: e.target.value,
-                              description: extendedDetails.numericalTarget?.description || '',
-                              unit: extendedDetails.numericalTarget?.unit || '',
-                            } as NumericalTarget
-                          })}
-                          disabled={!canEdit}
-                          className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="目標値"
-                        />
-                        <input
-                          type="text"
-                          value={extendedDetails.numericalTarget?.unit || ''}
-                          onChange={(e) => updateExtendedDetails({ 
-                            numericalTarget: { 
-                              ...extendedDetails.numericalTarget, 
-                              unit: e.target.value,
-                              description: extendedDetails.numericalTarget?.description || '',
-                              targetValue: extendedDetails.numericalTarget?.targetValue || '',
-                            } as NumericalTarget
-                          })}
-                          disabled={!canEdit}
-                          className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="単位"
-                        />
-                      </div>
-                      {extendedDetails.numericalTarget && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <input
-                            type="text"
-                            value={extendedDetails.numericalTarget.currentValue || ''}
-                            onChange={(e) => updateExtendedDetails({ 
-                              numericalTarget: { 
-                                ...extendedDetails.numericalTarget, 
-                                currentValue: e.target.value 
-                              } 
-                            })}
-                            disabled={!canEdit}
-                            className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="現在値"
-                          />
-                          <select
-                            value={extendedDetails.numericalTarget.status || NumericalTargetStatus.PENDING}
-                            onChange={(e) => updateExtendedDetails({ 
-                              numericalTarget: { 
-                                ...extendedDetails.numericalTarget, 
-                                status: e.target.value as NumericalTargetStatus 
-                              } 
-                            })}
-                            disabled={!canEdit}
-                            className="px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value={NumericalTargetStatus.PENDING}>進行中</option>
-                            <option value={NumericalTargetStatus.ACHIEVED}>達成</option>
-                            <option value={NumericalTargetStatus.MISSED}>未達成</option>
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="text-sm font-semibold text-slate-700 flex items-center">
-                        <PaperClipIcon className="w-4 h-4 mr-2" />
-                        添付ファイル ({extendedDetails.attachments.length})
-                      </label>
-                      {canEdit && (
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                        >
-                          ファイル追加
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      className="hidden"
-                      multiple={false}
-                    />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {extendedDetails.attachments.map(attachment => (
-                        <div key={attachment.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-md">
-                          <a
-                            href={attachment.dataUrl}
-                            download={attachment.name}
-                            className="text-sm text-blue-600 hover:underline truncate flex-1"
-                            title={attachment.name}
-                          >
-                            {attachment.name}
-                          </a>
-                          {canEdit && (
-                            <button
-                              onClick={() => handleRemoveAttachment(attachment.id)}
-                              className="text-red-500 hover:text-red-700 ml-2"
-                            >
-                              <TrashIcon className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* サブステップ計画タブ */}
-            {activeTab === 'substeps' && (
-              <div className="flex flex-col h-full">
-                <div className="p-4 border-b border-slate-200 bg-slate-50">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-lg font-semibold text-slate-800 flex items-center">
-                      <SubtaskIcon className="w-5 h-5 mr-2" />
-                      サブステップフロー ({extendedDetails.subSteps.length})
-                    </h4>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-slate-600">
-                        進捗: {completedActionItems}/{totalActionItems} アクション完了
-                      </span>
-                      {canEdit && (
-                        <>
-                          <button
-                            onClick={handleAutoLayout}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300"
-                            title="自動整列"
-                          >
-                            <RefreshIcon className="w-4 h-4" />
-                            整列
-                          </button>
-                          <button
-                            onClick={handleGenerateProposals}
-                            disabled={isGeneratingProposals}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-slate-400"
-                          >
-                            {isGeneratingProposals ? <LoadingSpinner size="sm" color="border-white" /> : <SparklesIcon className="w-4 h-4" />}
-                            AIで提案
-                          </button>
-                          <button
-                            onClick={handleAddSubStep}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700"
-                          >
-                            <PlusCircleIcon className="w-4 h-4" />
-                            追加
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {proposalError && <ErrorMessage message={proposalError} />}
-                  {reportError && <ErrorMessage message={reportError} />}
-                </div>
-
-                <div 
-                  ref={subStepCanvasRef}
-                  className="flex-1 overflow-auto bg-slate-100 relative p-4"
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  style={{ minHeight: '600px' }}
-                >
-                  {extendedDetails.subSteps.length === 0 ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center">
-                        <SubtaskIcon className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-                        <p className="text-slate-500 text-lg mb-4">サブステップがありません</p>
-                        <p className="text-slate-400 text-sm">
-                          {canEdit ? 'AIでステップ提案を生成するか、手動でサブステップを追加してください。' : 'サブステップが設定されていません。'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {extendedDetails.subSteps.map((subStep) => (
-                        <div
-                          key={subStep.id}
-                          className={`absolute bg-white rounded-lg shadow-md border-l-4 ${getStatusColor(subStep.status)} p-3 w-64`}
-                          style={{
-                            left: subStep.position?.x || 0,
-                            top: subStep.position?.y || 0,
-                          }}
-                          onMouseUp={() => handleEndConnection(subStep.id)}
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1 min-w-0">
-                              <input
-                                type="text"
-                                value={subStep.text}
-                                onChange={(e) => handleUpdateSubStep(subStep.id, { text: e.target.value })}
-                                disabled={!canEdit}
-                                className="w-full font-semibold text-slate-800 bg-transparent border-none outline-none text-sm"
-                              />
-                              <div className="flex items-center gap-2 mt-1">
-                                {getStatusBadge(subStep.status)}
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-1 ml-2">
-                              {canEdit && (
-                                <div
-                                  onMouseDown={(e) => handleStartConnection(subStep.id, e)}
-                                  className="w-3 h-3 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-125 transition-transform"
-                                  title="ドラッグして接続"
-                                />
-                              )}
-                              {canEdit && (
-                                <button
-                                  onClick={() => handleRemoveSubStep(subStep.id)}
-                                  className="text-red-500 hover:text-red-700 p-1"
-                                  title="削除"
-                                >
-                                  <TrashIcon className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="space-y-2 text-xs">
-                            <div>
-                              <span className="font-medium text-slate-600">担当:</span>
-                              <span className="ml-1 text-slate-800">{subStep.responsible || '未設定'}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-slate-600">期日:</span>
-                              <span className="ml-1 text-slate-800">
-                                {subStep.dueDate ? new Date(subStep.dueDate + 'T00:00:00Z').toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' }) : '未設定'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-slate-600">アクション:</span>
-                              <span className="ml-1 text-slate-800">
-                                {(subStep.actionItems || []).filter(ai => ai.completed).length}/{(subStep.actionItems || []).length}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-
-                      <svg 
-                        style={{ 
-                          position: 'absolute', 
-                          top: 0, 
-                          left: 0, 
-                          width: '100%', 
-                          height: '100%', 
-                          pointerEvents: 'none',
-                          overflow: 'visible'
-                        }}
-                      >
-                        <defs>
-                          <marker
-                            id="arrowhead-substep"
-                            markerWidth="8"
-                            markerHeight="6"
-                            refX="8"
-                            refY="3"
-                            orient="auto"
-                            markerUnits="strokeWidth"
-                          >
-                            <path d="M0,0 L8,3 L0,6 Z" fill="#64748b" />
-                          </marker>
-                        </defs>
-                        
-                        {connectors.map(conn => (
-                          <g key={conn.id}>
-                            <path
-                              d={`M${conn.from.x},${conn.from.y} C${conn.from.x + 50},${conn.from.y} ${conn.to.x - 50},${conn.to.y} ${conn.to.x},${conn.to.y}`}
-                              stroke="#64748b"
-                              strokeWidth="2"
-                              markerEnd="url(#arrowhead-substep)"
-                              fill="none"
-                            />
-                            {canEdit && (
-                              <circle
-                                cx={(conn.from.x + conn.to.x) / 2}
-                                cy={(conn.from.y + conn.to.y) / 2}
-                                r="8"
-                                fill="white"
-                                stroke="#ef4444"
-                                strokeWidth="2"
-                                className="cursor-pointer hover:fill-red-100"
-                                onClick={() => handleDeleteConnection(conn.sourceId, conn.targetId)}
-                                style={{ pointerEvents: 'auto' }}
-                              />
-                            )}
-                          </g>
-                        ))}
-                        
-                        {connectingState && (
-                          <path
-                            d={`M${connectingState.fromPos.x},${connectingState.fromPos.y} L${mousePos.x},${mousePos.y}`}
-                            stroke="#3b82f6"
-                            strokeWidth="2"
-                            strokeDasharray="5,5"
-                            fill="none"
-                          />
-                        )}
-                      </svg>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* サブステップの詳細タブ */}
-            {activeTab === 'details' && (
-              <div className="p-6 overflow-y-auto h-full">
-                <div className="space-y-6">
-                  {extendedDetails.subSteps.length === 0 ? (
-                    <div className="text-center py-12">
-                      <SubtaskIcon className="w-16 h-16 mx-auto text-slate-400 mb-4" />
-                      <p className="text-slate-500 text-lg">サブステップがありません</p>
-                      <p className="text-slate-400 text-sm mt-2">
-                        まず「サブステップ計画」タブでサブステップを作成してください。
-                      </p>
-                    </div>
-                  ) : (
-                    extendedDetails.subSteps.map((subStep) => (
-                      <div key={subStep.id} className="bg-white border border-slate-200 rounded-lg p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1">
-                            <input
-                              type="text"
-                              value={subStep.text}
-                              onChange={(e) => handleUpdateSubStep(subStep.id, { text: e.target.value })}
-                              disabled={!canEdit}
-                              className="text-lg font-semibold text-slate-800 bg-transparent border-none outline-none w-full"
-                            />
-                            <div className="flex items-center gap-3 mt-2">
-                              {getStatusBadge(subStep.status)}
-                              {canEdit && (
-                                <select
-                                  value={subStep.status || SubStepStatus.NOT_STARTED}
-                                  onChange={(e) => handleUpdateSubStep(subStep.id, { status: e.target.value as SubStepStatus })}
-                                  className="text-sm border border-slate-300 rounded px-2 py-1"
-                                >
-                                  <option value={SubStepStatus.NOT_STARTED}>未着手</option>
-                                  <option value={SubStepStatus.IN_PROGRESS}>進行中</option>
-                                  <option value={SubStepStatus.COMPLETED}>完了</option>
-                                </select>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleShowActionItemTable(subStep.id)}
-                              className="text-sm text-blue-600 hover:text-blue-800"
-                              title="アクションアイテム一覧"
-                            >
-                              一覧表示
-                            </button>
-                            {canEdit && (
-                              <button
-                                onClick={() => handleAddActionItem(subStep.id)}
-                                className="text-sm text-green-600 hover:text-green-800"
-                                title="アクションアイテム追加"
-                              >
-                                アクション追加
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <label className="text-sm font-medium text-slate-600">担当者</label>
-                            <input
-                              type="text"
-                              value={subStep.responsible || ''}
-                              onChange={(e) => handleUpdateSubStep(subStep.id, { responsible: e.target.value })}
-                              disabled={!canEdit}
-                              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-md"
-                              placeholder="担当者名"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-sm font-medium text-slate-600">期日</label>
-                            <input
-                              type="date"
-                              value={subStep.dueDate || ''}
-                              onChange={(e) => handleUpdateSubStep(subStep.id, { dueDate: e.target.value })}
-                              disabled={!canEdit}
-                              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-md"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mb-4">
-                          <label className="text-sm font-medium text-slate-600">メモ・詳細</label>
-                          <textarea
-                            value={subStep.notes || ''}
-                            onChange={(e) => handleUpdateSubStep(subStep.id, { notes: e.target.value })}
-                            disabled={!canEdit}
-                            rows={3}
-                            className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-md"
-                            placeholder="詳細な説明や注意事項"
-                          />
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-3">
-                            <h5 className="text-sm font-medium text-slate-700">
-                              アクションアイテム ({(subStep.actionItems || []).filter(ai => ai.completed).length}/{(subStep.actionItems || []).length})
-                            </h5>
-                          </div>
-                          <div className="space-y-3">
-                            {(subStep.actionItems || []).map((actionItem) => (
-                              <div key={actionItem.id} className="flex items-start space-x-3 p-3 bg-slate-50 rounded-md">
-                                <button
-                                  onClick={() => handleUpdateActionItem(subStep.id, actionItem.id, { completed: !actionItem.completed })}
-                                  disabled={!canEdit}
-                                  className="mt-1 flex-shrink-0"
-                                >
-                                  {actionItem.completed ? (
-                                    <CheckSquareIcon className="w-5 h-5 text-green-600" />
-                                  ) : (
-                                    <SquareIcon className="w-5 h-5 text-slate-400" />
-                                  )}
-                                </button>
-                                <div className="flex-1 min-w-0">
-                                  <input
-                                    type="text"
-                                    value={actionItem.text}
-                                    onChange={(e) => handleUpdateActionItem(subStep.id, actionItem.id, { text: e.target.value })}
-                                    disabled={!canEdit}
-                                    className={`w-full bg-transparent border-none outline-none font-medium ${actionItem.completed ? 'line-through text-slate-500' : 'text-slate-800'}`}
-                                  />
-                                  <div className="grid grid-cols-2 gap-3 mt-2">
-                                    <input
-                                      type="text"
-                                      value={actionItem.responsible || ''}
-                                      onChange={(e) => handleUpdateActionItem(subStep.id, actionItem.id, { responsible: e.target.value })}
-                                      disabled={!canEdit}
-                                      className="text-sm border border-slate-300 rounded px-2 py-1"
-                                      placeholder="担当者"
-                                    />
-                                    <input
-                                      type="date"
-                                      value={actionItem.dueDate || ''}
-                                      onChange={(e) => handleUpdateActionItem(subStep.id, actionItem.id, { dueDate: e.target.value })}
-                                      disabled={!canEdit}
-                                      className="text-sm border border-slate-300 rounded px-2 py-1"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    onClick={() => handleActionItemReport(subStep.id, actionItem)}
-                                    className="text-blue-600 hover:text-blue-800 text-sm"
-                                    title="実施レポート"
-                                  >
-                                    📊
-                                  </button>
-                                  {canEdit && (
-                                    <button
-                                      onClick={() => handleRemoveActionItem(subStep.id, actionItem.id)}
-                                      className="text-red-500 hover:text-red-700"
-                                      title="削除"
-                                    >
-                                      <TrashIcon className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Tab Navigation */}
+        <div className="bg-white border-b border-slate-200 px-4">
+          <div className="flex space-x-8">
+            {[
+              { id: 'info', label: 'タスク情報', icon: NotesIcon },
+              { id: 'substeps', label: 'サブステップ', icon: SubtaskIcon },
+              { id: 'details', label: 'サブステップの詳細', icon: ClipboardDocumentListIcon }
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id as any)}
+                className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                {label}
+                {maximizedPanel !== id && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMaximizedPanel(maximizedPanel === id ? null : id as any);
+                    }}
+                    className="ml-2 p-1 hover:bg-slate-200 rounded"
+                    title={maximizedPanel === id ? "最小化" : "最大化"}
+                  >
+                    {maximizedPanel === id ? (
+                      <ArrowsPointingInIcon className="w-4 h-4" />
+                    ) : (
+                      <ArrowsPointingOutIcon className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden">
+          {maximizedPanel ? (
+            <div className="h-full">
+              {maximizedPanel === 'info' && (
+                <div className="h-full overflow-y-auto p-6">
+                  {renderTaskInfo()}
+                </div>
+              )}
+              {maximizedPanel === 'substeps' && (
+                <div className="h-full">
+                  {renderSubSteps()}
+                </div>
+              )}
+              {maximizedPanel === 'details' && (
+                <div className="h-full overflow-y-auto p-6">
+                  {renderDetails()}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 h-full">
+              <div className="border-r border-slate-200 overflow-y-auto">
+                <div className="p-4 border-b border-slate-200 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-800">タスク情報</h3>
+                    <button
+                      onClick={() => setMaximizedPanel('info')}
+                      className="p-1 hover:bg-slate-200 rounded"
+                      title="最大化"
+                    >
+                      <ArrowsPointingOutIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4">
+                  {renderTaskInfo()}
+                </div>
+              </div>
+
+              <div className="border-r border-slate-200 overflow-hidden">
+                <div className="p-4 border-b border-slate-200 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-800">サブステップ</h3>
+                    <button
+                      onClick={() => setMaximizedPanel('substeps')}
+                      className="p-1 hover:bg-slate-200 rounded"
+                      title="最大化"
+                    >
+                      <ArrowsPointingOutIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="h-[calc(100%-80px)]">
+                  {renderSubSteps()}
+                </div>
+              </div>
+
+              <div className="overflow-y-auto">
+                <div className="p-4 border-b border-slate-200 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-800">サブステップの詳細</h3>
+                    <button
+                      onClick={() => setMaximizedPanel('details')}
+                      className="p-1 hover:bg-slate-200 rounded"
+                      title="最大化"
+                    >
+                      <ArrowsPointingOutIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-4">
+                  {renderDetails()}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="p-4 bg-red-100 border-t border-red-200">
+            <p className="text-red-700">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-600 hover:text-red-800 text-sm mt-1"
+            >
+              閉じる
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Modals */}
       {isProposalModalOpen && (
         <ProposalReviewModal
           proposals={proposals}
           existingSubSteps={extendedDetails.subSteps}
-          onConfirm={handleProposalConfirm}
+          onConfirm={handleConfirmProposals}
           onClose={() => setIsProposalModalOpen(false)}
         />
       )}
 
-      {selectedActionItem && (
+      {isActionItemReportModalOpen && selectedActionItem && (
         <ActionItemReportModal
-          actionItem={selectedActionItem.actionItem}
-          onSave={handleActionItemReportSave}
-          onClose={() => setSelectedActionItem(null)}
+          actionItem={selectedActionItem}
+          onSave={(updatedItem) => {
+            const subStep = extendedDetails.subSteps.find(ss => 
+              ss.actionItems?.some(ai => ai.id === updatedItem.id)
+            );
+            if (subStep) {
+              handleUpdateActionItem(subStep.id, updatedItem.id, updatedItem);
+            }
+            setIsActionItemReportModalOpen(false);
+          }}
+          onClose={() => setIsActionItemReportModalOpen(false)}
           generateUniqueId={generateUniqueId}
         />
       )}
 
-      {actionItemTableData && (
+      {isActionItemTableModalOpen && (
         <ActionItemTableModal
-          items={actionItemTableData.items}
-          taskName={actionItemTableData.taskName}
-          onClose={() => setActionItemTableData(null)}
+          items={selectedActionItems}
+          taskName={task.title}
+          onClose={() => setIsActionItemTableModalOpen(false)}
+        />
+      )}
+
+      {isDecisionModalOpen && (
+        <DecisionModal
+          isOpen={isDecisionModalOpen}
+          onClose={() => setIsDecisionModalOpen(false)}
+          onSave={handleSaveDecisions}
+          task={task}
+          generateUniqueId={generateUniqueId}
         />
       )}
 
@@ -1139,17 +1307,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           task={task}
           isOpen={isCustomReportModalOpen}
           onClose={() => setIsCustomReportModalOpen(false)}
-          onReportGenerated={handleCustomReportGenerated}
-        />
-      )}
-
-      {isDecisionModalOpen && (
-        <DecisionModal
-          isOpen={isDecisionModalOpen}
-          onClose={() => setIsDecisionModalOpen(false)}
-          onSave={handleDecisionsSave}
-          task={task}
-          generateUniqueId={generateUniqueId}
+          onReportGenerated={(deck) => {
+            setExtendedDetails(prev => ({ ...prev, reportDeck: deck }));
+            setIsCustomReportModalOpen(false);
+            setIsSlideEditorOpen(true);
+          }}
         />
       )}
     </>
