@@ -242,16 +242,6 @@ const { data: membersData, error: membersError } = await supabase
       userRole: data.project_members[0]?.role || 'viewer',
     };
   }
-  // ここで updateProjectメソッドは閉じる
-
-  // 新しいメソッドをここに追加
-  static async updateTaskInProject(
-    projectId: string,
-    updatedTask: ProjectTask,
-    expectedVersion?: number
-  ): Promise<void> {
-    // 実装
-  }
 
   // プロジェクトを削除
   static async deleteProject(id: string): Promise<void> {
