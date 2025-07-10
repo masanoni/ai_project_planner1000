@@ -74,14 +74,10 @@ static async getProjectWithMembers(projectId: string): Promise<ProjectWithMetada
   if (projectError) throw new Error(`プロジェクト取得エラー: ${projectError.message}`);
 
   // メンバー情報取得 (user_profiles view経由)
-  const { data: membersData, error: membersError } = await supabase
-    .from('project_members')
-    .select(`
-      *,
-      user_profiles!inner(email)
-    `)
-    .eq('project_id', projectId)
-    .eq('status', 'accepted');
+const { data: membersData, error: membersError } = await supabase
+  .from('project_members_with_email')
+  .select('*')
+  .eq('project_id', projectId);
 
   if (membersError) {
     console.error('メンバー取得エラー詳細:', membersError);
