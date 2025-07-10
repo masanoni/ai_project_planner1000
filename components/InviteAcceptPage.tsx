@@ -40,36 +40,41 @@ const InviteAcceptPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
+ useEffect(() => {
+  let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
 
-    const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
+  const initAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUser = session?.user ?? null;
+    setUser(currentUser);
 
-      if (currentUser && token && !result) {
-        await handleJoinProject();
+    if (currentUser && token && !result) {
+      await handleJoinProject();
+    }
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user && token && !result) {
+        handleJoinProject();
       }
+    });
 
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user && token && !result) {
-          handleJoinProject();
-        }
-      });
+    subscription = data;
+  };
 
-      subscription = data;
-    };
+  initAuth();
 
-    initAuth();
+  // ここは1つの return で閉じる（useEffectのクリーンアップ）
+  return () => {
+    subscription?.unsubscribe();
+  };
+}, [token]);
 
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, [token]);
+// ここで handleJoinProject は useEffect の外に書く
+const handleJoinProject = async () => {
+  // 処理内容...
+};
 
-  // 以降、UI部分のコードは変更なし
   // ...
 };
 
