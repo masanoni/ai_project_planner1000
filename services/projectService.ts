@@ -181,9 +181,13 @@ const { data: membersData, error: membersError } = await supabase
       throw new Error(SUPABASE_NOT_AVAILABLE);
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('ログインが必要です');
+   const { data: { session } } = await supabase.auth.getSession();
+const user = session?.user;
+
+if (!user) {
+  throw new Error('ログインが必要です');
+}
+
     }
 
     // 楽観的ロックのチェック
