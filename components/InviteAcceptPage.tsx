@@ -65,64 +65,9 @@ const InviteAcceptPage: React.FC = () => {
     };
   }, [token]);
 
-  // --- 以下、JSXなどのコード ---
-
-  return (
-    // JSX省略
-  );
-};
-
-
-// ここで handleJoinProject は useEffect の外に書く
-const handleJoinProject = async () => {
-  // 処理内容...
-};
-
-  // ...
-};
-
-export default InviteAcceptPage;
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user && token && !result) {
-        handleJoinProject();
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [token]);
-
-  const handleJoinProject = async () => {
-    if (!token) {
-      setResult({ success: false, error: '無効な招待リンクです' });
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const joinResult = await ProjectService.joinProjectByInvitation(token);
-      setResult(joinResult);
-      
-      if (joinResult.success && joinResult.project) {
-        // 3秒後にプロジェクトページにリダイレクト
-        setTimeout(() => {
-          navigate('/');
-        }, 3000);
-      }
-    } catch (err) {
-      setResult({
-        success: false,
-        error: err instanceof Error ? err.message : 'プロジェクトへの参加に失敗しました'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleAuthSuccess = () => {
     setShowAuthModal(false);
-    // 認証成功後、自動的にuseEffectでhandleJoinProjectが呼ばれる
+    // 認証成功後、useEffect内の処理でhandleJoinProjectが呼ばれます
   };
 
   if (!token) {
