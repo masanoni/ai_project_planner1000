@@ -39,15 +39,14 @@ const InviteAcceptPage: React.FC = () => {
 
     initAuth();
 
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, [token]);
+ useEffect(() => {
+  let subscription: ReturnType<typeof supabase.auth.onAuthStateChange> | null = null;
 
-  // JSXの返却など...
-};
+  const initAuth = async () => {
+    // 初期処理（セッション取得やユーザーセットなど）
+  };
 
-  initAuth(); // 実行
+  initAuth();
 
   return () => {
     subscription?.unsubscribe();
