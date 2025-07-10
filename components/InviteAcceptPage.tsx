@@ -14,13 +14,12 @@ const InviteAcceptPage: React.FC = () => {
   const [result, setResult] = useState<{ success: boolean; error?: string; project?: any } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // handleJoinProject は useEffect の外で一度だけ宣言
+  // 1回だけ定義する
   const handleJoinProject = async () => {
     if (!token) {
       setResult({ success: false, error: '無効な招待リンクです' });
       return;
     }
-
     setIsLoading(true);
     try {
       const joinResult = await ProjectService.joinProjectByInvitation(token);
@@ -55,6 +54,9 @@ const InviteAcceptPage: React.FC = () => {
 
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
+        if (session?.user && token && !result) {
+          handleJoinProject();
+        }
       });
 
       subscription = data;
@@ -66,6 +68,12 @@ const InviteAcceptPage: React.FC = () => {
       subscription?.unsubscribe();
     };
   }, [token]);
+
+  // 以降、UI部分のコードは変更なし
+  // ...
+};
+
+export default InviteAcceptPage;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
